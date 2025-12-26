@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>SETOLIA</title>
+
+        <!-- Google Fonts -->
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@700&family=Noto+Sans+JP:wght@700&display=swap"
+            rel="stylesheet"
+        />
+
+        <link rel="stylesheet" href="./style.css" />
+    </head>
+    <body>
+        <div class="glass-panel">
+            <div class="now-singing-section">
+                <div class="status-container">
+                    <span class="status-badge">Now Singing</span>
+                    <span class="timestamp" id="now-singing-time"></span>
+                </div>
+                <div id="now-singing"></div>
+            </div>
+
+            <div class="content-grid">
+                <div class="column">
+                    <div class="section-label">RESERVE</div>
+                    <ul id="reserve-list"></ul>
+                </div>
+
+                <div class="column">
+                    <div class="section-label">SETLIST</div>
+                    <ul id="set-list"></ul>
+                </div>
+            </div>
+        </div>
+
+        <script src="./script.js"></script>
+    </body>
+</html>

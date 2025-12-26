@@ -1,59 +1,32 @@
-# OBS Plugin Template
+[English](README-en.md)
 
-## Introduction
+# SETOLIA
 
-The plugin template is meant to be used as a starting point for OBS Studio plugin development. It includes:
+OBS Studio 用セットリストプラグイン
 
-* Boilerplate plugin source code
-* A CMake project file
-* GitHub Actions workflows and repository actions
+## 主な機能
 
-## Supported Build Environments
+- 配信時間に同期したタイムスタンプ
+- リアルタイム時計表示
+- [歌詞検索サイト](https://utaten.com)へのショートカットボタン
+- 設定済みブラウザソース追加ボタン
+- カスタムテンプレートに対応
+- Stream Deck からの操作に対応
 
-| Platform  | Tool   |
-|-----------|--------|
-| Windows   | Visual Studio 17 2022 |
-| macOS     | XCode 16.0 |
-| Windows, macOS  | CMake 3.30.5 |
-| Ubuntu 24.04 | CMake 3.28.3 |
-| Ubuntu 24.04 | `ninja-build` |
-| Ubuntu 24.04 | `pkg-config`
-| Ubuntu 24.04 | `build-essential` |
+## インストール方法
 
-## Quick Start
+Windows、MacOS、Linux 用のバイナリは、[リリース](https://github.com/Yagami-Huki/setolia/releases)ページで入手可能です。
 
-An absolute bare-bones [Quick Start Guide](https://github.com/obsproject/obs-plugintemplate/wiki/Quick-Start-Guide) is available in the wiki.
+また、[Booth](https://logicbox.booth.pm/items/7541386) にて最新の Windows 用のインストーラーを入手可能です。
 
-## Documentation
+## 使用方法
 
-All documentation can be found in the [Plugin Template Wiki](https://github.com/obsproject/obs-plugintemplate/wiki).
+[Booth](https://logicbox.booth.pm/items/7541386) にてユーザーマニュアルを公開しているため、こちらをご参照ください。
 
-Suggested reading to get up and running:
+## ライセンスと謝辞
 
-* [Getting started](https://github.com/obsproject/obs-plugintemplate/wiki/Getting-Started)
-* [Build system requirements](https://github.com/obsproject/obs-plugintemplate/wiki/Build-System-Requirements)
-* [Build system options](https://github.com/obsproject/obs-plugintemplate/wiki/CMake-Build-System-Options)
+このソフトウェアは、GPL-3.0 ライセンスのもとで公開されています。
 
-## GitHub Actions & CI
+このプロジェクトは、[OBS Project](https://github.com/obsproject) によって作成された [obs-plugintemplate](https://github.com/obsproject/obs-plugintemplate) を使用して開発されました。
 
-Default GitHub Actions workflows are available for the following repository actions:
-
-* `push`: Run for commits or tags pushed to `master` or `main` branches.
-* `pr-pull`: Run when a Pull Request has been pushed or synchronized.
-* `dispatch`: Run when triggered by the workflow dispatch in GitHub's user interface.
-* `build-project`: Builds the actual project and is triggered by other workflows.
-* `check-format`: Checks CMake and plugin source code formatting and is triggered by other workflows.
-
-The workflows make use of GitHub repository actions (contained in `.github/actions`) and build scripts (contained in `.github/scripts`) which are not needed for local development, but might need to be adjusted if additional/different steps are required to build the plugin.
-
-### Retrieving build artifacts
-
-Successful builds on GitHub Actions will produce build artifacts that can be downloaded for testing. These artifacts are commonly simple archives and will not contain package installers or installation programs.
-
-### Building a Release
-
-To create a release, an appropriately named tag needs to be pushed to the `main`/`master` branch using semantic versioning (e.g., `12.3.4`, `23.4.5-beta2`). A draft release will be created on the associated repository with generated installer packages or installation programs attached as release artifacts.
-
-## Signing and Notarizing on macOS
-
-Basic concepts of codesigning and notarization on macOS are explained in the correspodning [Wiki article](https://github.com/obsproject/obs-plugintemplate/wiki/Codesigning-On-macOS) which has a specific section for the [GitHub Actions setup](https://github.com/obsproject/obs-plugintemplate/wiki/Codesigning-On-macOS#setting-up-code-signing-for-github-actions).
+また、このソフトウェアに付属する標準のテンプレートは、MIT ライセンスのもとで公開されています。

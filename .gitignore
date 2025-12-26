@@ -6,6 +6,7 @@
 !/build-aux
 !/cmake
 !/data
+!/deps
 !/src
 !.clang-format
 !.gersemirc
@@ -14,7 +15,11 @@
 !CMakeLists.txt
 !CMakePresets.json
 !LICENSE
+!openapi.yml
 !README.md
+!README-en.md
+!.editorconfig
+!installer.nsi
 
 # Exclude lock files
 *.lock.json

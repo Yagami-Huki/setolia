@@ -1,0 +1,5 @@
+{
+  "width": 600,
+  "height": 170,
+  "css": ":root {\n  --glass-bg: rgba(0, 0, 0, 0.12);\n  --glass-border: rgba(0, 0, 0, 0.4);\n  --text-primary: #000000;\n  --divider-color: rgba(0, 0, 0, 0.4);\n}"
+}

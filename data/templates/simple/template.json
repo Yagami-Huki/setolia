@@ -1,0 +1,5 @@
+{
+  "width": 600,
+  "height": 800,
+  "css": ":root {\n  --accent-color: #a855f7;\n  --text-color: #ffffff;\n  --panel-bg: #000000;\n  --item-gap: 0.25rem;\n  font-family: \"Inter\", \"Noto Sans JP\", sans-serif;\n}"
+}

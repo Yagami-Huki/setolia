@@ -1,0 +1,32 @@
+:root {
+    --text-color: #000000;
+    font-family: "Inter", "Noto Sans JP", sans-serif;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    background-color: transparent;
+}
+
+body {
+    color: var(--text-color);
+    display: flex;
+    box-sizing: border-box;
+    justify-content: center;
+    align-items: center;
+}
+
+#now-singing {
+    font-size: 100vh;
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    min-height: 1.1em;
+    overflow: hidden;
+    text-wrap: nowrap;
+}

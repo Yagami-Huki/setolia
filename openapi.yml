@@ -1,0 +1,69 @@
+openapi: "3.0.3"
+info:
+  title: SETOLIA API
+  version: "1.0"
+servers:
+  - url: http://127.0.0.1:8080
+components:
+  schemas:
+    data:
+      type: object
+      properties:
+        reserve:
+          type: array
+          items:
+            type: string
+        singing:
+          type: array
+          items:
+            type: string
+            description: If timestamps available, length becomes 2.
+            minLength: 1
+            maxLength: 2
+        setlist:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+              description: If timestamps available, length becomes 2.
+              minLength: 1
+              maxLength: 2
+paths:
+  /data:
+    description: Get current data
+    get:
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/data"
+  /events:
+    get:
+      description: Endpoint for Server-Sent Events (SSE)
+      responses:
+        "200":
+          description: OK
+          content:
+            text/event-stream:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/data"
+  /next:
+    post:
+      description: Switch to the next song
+      responses:
+        "200":
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK

@@ -1,0 +1,5 @@
+{
+  "width": 600,
+  "height": 800,
+  "css": ":root {\n  --glass-bg: rgba(255, 255, 255, 0.12);\n  --glass-border: rgba(255, 255, 255, 0.4);\n  --text-primary: #ffffff;\n  --timestamp-color: #ffffff;\n  --divider-color: rgba(255, 255, 255, 0.4);\n  --item-bg: rgba(255, 255, 255, 0.1);\n}"
+}
