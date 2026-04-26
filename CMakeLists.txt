@@ -34,6 +34,20 @@ if(ENABLE_QT)
   )
 endif()
 
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE src/setolia-dock.cpp src/setolia-dock.hpp)
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+  src/setolia.cpp
+  src/setolia.hpp
+  src/dock/widget.cpp
+  src/dock/widget.hpp
+  src/dock/view.hpp
+  src/dock/action.cpp
+  src/dock/action.hpp
+  src/source/template_manager.cpp
+  src/source/template_manager.hpp
+  src/source/http_sync_server.cpp
+  src/source/http_sync_server.hpp
+  src/config/config_manager.cpp
+  src/config/config_manager.hpp
+  )
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})
