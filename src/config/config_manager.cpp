@@ -8,6 +8,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
+ConfigManager::ConfigManager() = default;
+
 QString ConfigManager::configFilePath() const
 {
 	char *configDir = obs_module_config_path("");

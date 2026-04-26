@@ -8,7 +8,7 @@
 class TemplateManager;
 class HTTPSyncServer;
 class ConfigManager;
-struct Config;
+class Config;
 
 class DockActions {
 public:

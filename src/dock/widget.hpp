@@ -5,7 +5,7 @@
 #include "view.hpp"
 
 class DockActions;
-struct Config;
+class Config;
 
 class SetoliaDockWidget : public QWidget {
 	Q_OBJECT

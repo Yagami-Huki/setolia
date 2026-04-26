@@ -3,7 +3,7 @@
 #include <QString>
 #include <memory>
 
-class DockViewParts;
+struct DockViewParts;
 
 class Config {
 public:
