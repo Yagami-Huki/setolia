@@ -23,8 +23,8 @@ public:
 	void startClock();
 	void stopClock();
 
-	void startStreamingTimer(int &timestampCount);
-	void stopStreamingTimer(int &timestampCount);
+	void startStreamingTimer();
+	void stopStreamingTimer();
 	void reloadTemplates();
 	void openTemplateDirectory();
 	void addSelectedTemplateToScene();
@@ -51,5 +51,6 @@ private:
 	std::unique_ptr<HTTPSyncServer> httpSyncServer;
 	std::unique_ptr<TaggedTextSourceManager> taggedTextSourceManager;
 	std::unique_ptr<ConfigManager> configManager;
+	int timestampCount = 0;
 	std::string cachedData;
 };

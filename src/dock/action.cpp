@@ -193,12 +193,12 @@ void DockActions::stopClock()
 	QObject::disconnect(viewParts.clockTimer, &QTimer::timeout, nullptr, nullptr);
 }
 
-void DockActions::startStreamingTimer(int &timestampCount)
+void DockActions::startStreamingTimer()
 {
 	timestampCount = 0;
 	viewParts.timestampDisplay->setText("0:00:00");
 	QObject::disconnect(viewParts.timestampTimer, &QTimer::timeout, nullptr, nullptr);
-	QObject::connect(viewParts.timestampTimer, &QTimer::timeout, [&timestampCount, this]() {
+	QObject::connect(viewParts.timestampTimer, &QTimer::timeout, viewParts.timestampTimer, [this]() {
 		timestampCount++;
 		const int hours = timestampCount / 3600;
 		const int minutes = (timestampCount % 3600) / 60;
@@ -211,7 +211,7 @@ void DockActions::startStreamingTimer(int &timestampCount)
 	viewParts.timestampTimer->start(1000);
 }
 
-void DockActions::stopStreamingTimer(int &timestampCount)
+void DockActions::stopStreamingTimer()
 {
 	viewParts.timestampTimer->stop();
 	QObject::disconnect(viewParts.timestampTimer, &QTimer::timeout, nullptr, nullptr);

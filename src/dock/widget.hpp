@@ -23,6 +23,5 @@ private:
 	void shutdown();
 
 	DockViewParts viewParts;
-	int timestampCount = 0;
 	std::unique_ptr<DockActions> actions;
 };

@@ -31,12 +31,12 @@ SetoliaDockWidget::~SetoliaDockWidget()
 
 void SetoliaDockWidget::onStreamingStarted()
 {
-	actions->startStreamingTimer(timestampCount);
+	actions->startStreamingTimer();
 }
 
 void SetoliaDockWidget::onStreamingStopped()
 {
-	actions->stopStreamingTimer(timestampCount);
+	actions->stopStreamingTimer();
 }
 
 void SetoliaDockWidget::buildUI()
@@ -197,5 +197,5 @@ void SetoliaDockWidget::shutdown()
 	actions->saveConfig();
 	actions->stopStreaming();
 	actions->stopClock();
-	actions->stopStreamingTimer(timestampCount);
+	actions->stopStreamingTimer();
 }
