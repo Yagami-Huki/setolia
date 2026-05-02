@@ -63,7 +63,6 @@ void obs_module_unload(void)
 	if (g_setoliaDock) {
 		obs_frontend_remove_event_callback(frontend_event_callback, g_setoliaDock);
 		obs_frontend_remove_dock("SETOLIA_Dock");
-		delete g_setoliaDock;
 		g_setoliaDock = nullptr;
 	}
 }
