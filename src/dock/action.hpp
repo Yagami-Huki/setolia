@@ -7,6 +7,7 @@
 
 class TemplateManager;
 class HTTPSyncServer;
+class TaggedTextSourceManager;
 class ConfigManager;
 class Config;
 
@@ -48,6 +49,7 @@ private:
 	DockViewParts &viewParts;
 	std::unique_ptr<TemplateManager> templateManager;
 	std::unique_ptr<HTTPSyncServer> httpSyncServer;
+	std::unique_ptr<TaggedTextSourceManager> taggedTextSourceManager;
 	std::unique_ptr<ConfigManager> configManager;
 	std::string cachedData;
 };

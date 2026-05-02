@@ -31,7 +31,6 @@ void HTTPSyncServer::startServer()
 
 	// Start server in background thread
 	srv_thread = std::thread([this]() {
-		blog(LOG_INFO, "HTTPSyncServer: Starting HTTP server on 127.0.0.1:%d", PORT);
 		if (!srv->listen("127.0.0.1", PORT)) {
 			blog(LOG_ERROR, "HTTPSyncServer: Failed to start server");
 			srv_running = false;
@@ -45,8 +44,6 @@ void HTTPSyncServer::stopServer()
 	if (!srv_running && srv_stopped) {
 		return;
 	}
-
-	blog(LOG_INFO, "HTTPSyncServer: Stopping server");
 
 	{
 		std::lock_guard<std::mutex> lock(srv_mutex);
@@ -63,7 +60,6 @@ void HTTPSyncServer::stopServer()
 	}
 
 	srv_running = false;
-	blog(LOG_INFO, "HTTPSyncServer: Server stopped");
 }
 
 bool HTTPSyncServer::isRunning() const
@@ -140,7 +136,6 @@ void HTTPSyncServer::setupRoutes()
 
 				// Check if server is shutting down
 				if (srv_stopped) {
-					blog(LOG_DEBUG, "HTTPSyncServer: SSE client disconnecting (server stop)");
 					break;
 				}
 
@@ -149,7 +144,6 @@ void HTTPSyncServer::setupRoutes()
 					std::string payload = "data: " + latestData + "\n\n";
 
 					if (!sink.write(payload.data(), payload.size())) {
-						blog(LOG_DEBUG, "HTTPSyncServer: SSE client disconnect (write failed)");
 						break;
 					}
 
@@ -183,13 +177,10 @@ void HTTPSyncServer::setupRoutes()
 			res.set_content("Internal server error", "text/plain");
 		}
 	});
-
-	blog(LOG_INFO, "HTTPSyncServer: Routes configured");
 }
 
 void HTTPSyncServer::waitForShutdown()
 {
 	std::unique_lock<std::mutex> lock(srv_mutex);
 	srv_cond.wait(lock, [this] { return srv_stopped; });
-	blog(LOG_DEBUG, "HTTPSyncServer: Shutdown signal received");
 }

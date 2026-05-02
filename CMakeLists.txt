@@ -44,6 +44,10 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
   src/dock/action.hpp
   src/source/template_manager.cpp
   src/source/template_manager.hpp
+  src/source/tagged_text_source_manager.cpp
+  src/source/tagged_text_source_manager.hpp
+  src/source/setolia_text_sources.cpp
+  src/source/setolia_text_sources.hpp
   src/source/http_sync_server.cpp
   src/source/http_sync_server.hpp
   src/config/config_manager.cpp

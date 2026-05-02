@@ -2,13 +2,14 @@
   !define PLUGIN_NAME "setolia"
 !endif
 !ifndef PLUGIN_VERSION
-  !define PLUGIN_VERSION "1.0.0"
+  !define PLUGIN_VERSION "1.1.0"
 !endif
 !ifndef CONFIG
-  !define CONFIG "Release"
+  !define CONFIG "RelWithDebInfo"
 !endif
 
 Unicode True
+RequestExecutionLevel admin
 LoadLanguageFile "${NSISDIR}\Contrib\Language files\Japanese.nlf"
 
 Name "${PLUGIN_NAME} ${PLUGIN_VERSION}"
@@ -49,11 +50,18 @@ FunctionENd
 
 Section "Install"
   SetOutPath "$INSTDIR\obs-plugins\64bit"
-  File ".\release\${CONFIG}\${PLUGIN_NAME}\bin\64bit\${PLUGIN_NAME}.dll"
+  SetOverwrite ifnewer
+  File ".\build_x64\${CONFIG}\${PLUGIN_NAME}.dll"
 
-  SetOutPath "$INSTDIR\data\obs-plugins\${PLUGIN_NAME}"
-  File /r ".\release\${CONFIG}\${PLUGIN_NAME}\data\*"
+  SetOutPath "$INSTDIR\data\obs-plugins\${PLUGIN_NAME}\locale"
+  SetOverwrite ifnewer
+  File /r ".\data\locale\*"
 
+  SetOutPath "$INSTDIR\data\obs-plugins\${PLUGIN_NAME}\templates"
+  SetOverwrite ifnewer
+  File /r ".\data\templates\*"
+
+  SetOutPath "$INSTDIR\obs-plugins"
   WriteUninstaller "$INSTDIR\obs-plugins\uninstall-${PLUGIN_NAME}.exe"
 SectionEnd
 

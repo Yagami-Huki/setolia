@@ -4,6 +4,7 @@
 
 #include "../source/template_manager.hpp"
 #include "../source/http_sync_server.hpp"
+#include "../source/tagged_text_source_manager.hpp"
 #include "../config/config_manager.hpp"
 
 #include <QCheckBox>
@@ -57,6 +58,7 @@ DockActions::DockActions(DockViewParts &viewParts_) : viewParts(viewParts_)
 {
 	templateManager = std::make_unique<TemplateManager>();
 	httpSyncServer = std::make_unique<HTTPSyncServer>();
+	taggedTextSourceManager = std::make_unique<TaggedTextSourceManager>();
 	configManager = std::make_unique<ConfigManager>();
 
 	// Setup callback for external HTTP /next command
@@ -278,6 +280,20 @@ const std::string &DockActions::cacheData() const
 void DockActions::notifyStateChanged()
 {
 	cachedData = buildCachedData(viewParts);
+	TaggedTextSourceManager::setCurrentText(TaggedTextSourceManager::TextState::Reserve,
+						viewParts.reserveText->toPlainText());
+	TaggedTextSourceManager::setCurrentText(TaggedTextSourceManager::TextState::Singing,
+						viewParts.singingText->text());
+	TaggedTextSourceManager::setCurrentText(TaggedTextSourceManager::TextState::Setlist,
+						viewParts.setlistText->toPlainText());
+	if (taggedTextSourceManager) {
+		taggedTextSourceManager->syncAllTaggedSources(TaggedTextSourceManager::TextState::Reserve,
+							      viewParts.reserveText->toPlainText());
+		taggedTextSourceManager->syncAllTaggedSources(TaggedTextSourceManager::TextState::Singing,
+							      viewParts.singingText->text());
+		taggedTextSourceManager->syncAllTaggedSources(TaggedTextSourceManager::TextState::Setlist,
+							      viewParts.setlistText->toPlainText());
+	}
 	if (httpSyncServer) {
 		httpSyncServer->updateCachedData(cachedData);
 	}
@@ -354,9 +370,13 @@ void DockActions::applyConfig(const Config &config)
 	viewParts.templateComboBox->blockSignals(false);
 
 	// Update cache with restored state
+	TaggedTextSourceManager::setCurrentText(TaggedTextSourceManager::TextState::Reserve,
+						viewParts.reserveText->toPlainText());
+	TaggedTextSourceManager::setCurrentText(TaggedTextSourceManager::TextState::Singing,
+						viewParts.singingText->text());
+	TaggedTextSourceManager::setCurrentText(TaggedTextSourceManager::TextState::Setlist,
+						viewParts.setlistText->toPlainText());
 	notifyStateChanged();
-
-	blog(LOG_INFO, "DockActions: Configuration applied");
 }
 
 void DockActions::saveConfig() const

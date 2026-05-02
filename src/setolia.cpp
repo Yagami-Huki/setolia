@@ -4,8 +4,10 @@
 
 #include <QMainWindow>
 
+#include "source/setolia_text_sources.hpp"
+
 #define PLUGIN_NAME "SETOLIA"
-#define PLUGIN_VERSION "1.0.0"
+#define PLUGIN_VERSION "1.1.0"
 
 OBS_DECLARE_MODULE();
 OBS_MODULE_AUTHOR("Yagami Huki");
@@ -25,7 +27,7 @@ void SETOLIA_Dock::StopTimer()
 
 bool obs_module_load(void)
 {
-	blog(LOG_INFO, "%s loaded successfully (version %s)", PLUGIN_NAME, PLUGIN_VERSION);
+	register_setolia_text_sources();
 	return true;
 }
 

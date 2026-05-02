@@ -48,13 +48,11 @@ bool ConfigManager::loadConfig(Config &config) const
 {
 	const QString filePath = configFilePath();
 	if (filePath.isEmpty()) {
-		blog(LOG_INFO, "ConfigManager: No config file path available");
 		return true; // Not an error, just no config
 	}
 
 	// File doesn't exist yet - this is OK, will be created on first save
 	if (!QFileInfo::exists(filePath)) {
-		blog(LOG_INFO, "ConfigManager: Config file does not exist yet: %s", filePath.toUtf8().constData());
 		return true;
 	}
 
@@ -89,7 +87,6 @@ bool ConfigManager::loadConfig(Config &config) const
 		return false;
 	}
 
-	blog(LOG_INFO, "ConfigManager: Config loaded successfully from %s", filePath.toUtf8().constData());
 	return true;
 }
 
@@ -131,6 +128,5 @@ bool ConfigManager::saveConfig(const Config &config) const
 	}
 
 	file.close();
-	blog(LOG_INFO, "ConfigManager: Config saved successfully to %s", filePath.toUtf8().constData());
 	return true;
 }
