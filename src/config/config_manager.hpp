@@ -3,8 +3,6 @@
 #include <QString>
 #include <memory>
 
-struct DockViewParts;
-
 class Config {
 public:
 	// Text content
