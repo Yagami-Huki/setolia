@@ -4,6 +4,8 @@
 #include <obs-module.h>
 
 #include <QString>
+#include <QRegularExpression>
+#include <QStringList>
 #include <QUuid>
 #include <memory>
 
@@ -11,6 +13,7 @@ namespace {
 constexpr const char *kTagSettingKey = "setolia_tag";
 constexpr const char *kStateSettingKey = "setolia_text_state";
 constexpr const char *kTextSettingKey = "text";
+constexpr const char *kSongTitleOnlySettingKey = "setolia_song_title_only";
 
 struct SetoliaTextSourceDescriptor {
 	const char *sourceId;
@@ -28,7 +31,51 @@ constexpr SetoliaTextSourceDescriptor kDescriptors[] = {
 struct SetoliaTextSourceData {
 	obs_source_t *wrappedSource = nullptr;
 	TaggedTextSourceManager::TextState state = TaggedTextSourceManager::TextState::Reserve;
+	bool songTitleOnly = true;
 };
+
+QString stripTimestampFromLine(const QString &line)
+{
+	static const QRegularExpression kTimestampSuffixRegex(R"(^\s*(.*?)\s+-\s*([0-9]{1,2}:[0-9]{2}:[0-9]{2})\s*$)");
+
+	const QRegularExpressionMatch match = kTimestampSuffixRegex.match(line);
+	if (!match.hasMatch()) {
+		return line;
+	}
+
+	return match.captured(1).trimmed();
+}
+
+QString displayTextForSettings(obs_data_t *settings, bool songTitleOnly)
+{
+	if (!settings) {
+		return {};
+	}
+
+	const QString text = QString::fromUtf8(obs_data_get_string(settings, kTextSettingKey));
+	if (!songTitleOnly || text.isEmpty()) {
+		return text;
+	}
+
+	QStringList lines = text.split("\n", Qt::KeepEmptyParts);
+	for (QString &line : lines) {
+		line = stripTimestampFromLine(line);
+	}
+	return lines.join("\n");
+}
+
+QString displayTextFromRawText(const QString &rawText, bool songTitleOnly)
+{
+	if (!songTitleOnly || rawText.isEmpty()) {
+		return rawText;
+	}
+
+	QStringList lines = rawText.split("\n", Qt::KeepEmptyParts);
+	for (QString &line : lines) {
+		line = stripTimestampFromLine(line);
+	}
+	return lines.join("\n");
+}
 
 const SetoliaTextSourceDescriptor *descriptorById(const char *sourceId)
 {
@@ -81,12 +128,19 @@ void *setolia_text_source_create(obs_data_t *settings, obs_source_t *source)
 		obs_data_set_string(settings, kTagSettingKey, tag.toUtf8().constData());
 	}
 
+	if (!obs_data_has_user_value(settings, kSongTitleOnlySettingKey)) {
+		obs_data_set_bool(settings, kSongTitleOnlySettingKey, true);
+	}
+	data->songTitleOnly = obs_data_get_bool(settings, kSongTitleOnlySettingKey);
+
 	obs_data_set_string(settings, kStateSettingKey,
 			    TaggedTextSourceManager::stateToSettingValue(descriptor->state));
 
 	const QString currentText = TaggedTextSourceManager::currentText(descriptor->state);
 	if (!currentText.isEmpty()) {
 		obs_data_set_string(settings, kTextSettingKey, currentText.toUtf8().constData());
+		const QString displayText = displayTextForSettings(settings, data->songTitleOnly);
+		obs_data_set_string(settings, kTextSettingKey, displayText.toUtf8().constData());
 	}
 
 	const char *wrappedSourceId = TaggedTextSourceManager::sourceIdForCurrentPlatform();
@@ -125,6 +179,7 @@ void setolia_text_source_get_defaults(obs_data_t *settings)
 
 	obs_data_set_default_string(settings, kTextSettingKey, "");
 	obs_data_set_default_string(settings, kTagSettingKey, "");
+	obs_data_set_default_bool(settings, kSongTitleOnlySettingKey, true);
 	obs_data_set_default_string(
 		settings, kStateSettingKey,
 		TaggedTextSourceManager::stateToSettingValue(TaggedTextSourceManager::TextState::Reserve));
@@ -137,7 +192,16 @@ obs_properties_t *setolia_text_source_get_properties(void *dataPtr)
 		return nullptr;
 	}
 
-	return obs_source_properties(data->wrappedSource);
+	obs_properties_t *properties = obs_source_properties(data->wrappedSource);
+	if (!properties) {
+		return nullptr;
+	}
+
+	if (!obs_properties_get(properties, kSongTitleOnlySettingKey)) {
+		obs_properties_add_bool(properties, kSongTitleOnlySettingKey,
+					obs_module_text("SETOLIA_TEXT_SOURCE_SONG_TITLE_ONLY"));
+	}
+	return properties;
 }
 
 void setolia_text_source_update(void *dataPtr, obs_data_t *settings)
@@ -154,6 +218,20 @@ void setolia_text_source_update(void *dataPtr, obs_data_t *settings)
 	if (!tag.isEmpty()) {
 		obs_data_set_string(settings, kTagSettingKey, tag.toUtf8().constData());
 	}
+
+	if (!obs_data_has_user_value(settings, kSongTitleOnlySettingKey)) {
+		obs_data_set_bool(settings, kSongTitleOnlySettingKey, true);
+	}
+	data->songTitleOnly = obs_data_get_bool(settings, kSongTitleOnlySettingKey);
+
+	QString canonicalText = TaggedTextSourceManager::currentText(data->state);
+	if (canonicalText.isEmpty()) {
+		canonicalText = QString::fromUtf8(obs_data_get_string(settings, kTextSettingKey));
+	}
+	obs_data_set_string(settings, kTextSettingKey, canonicalText.toUtf8().constData());
+
+	const QString displayText = displayTextFromRawText(canonicalText, data->songTitleOnly);
+	obs_data_set_string(settings, kTextSettingKey, displayText.toUtf8().constData());
 
 	obs_data_set_string(settings, kStateSettingKey, TaggedTextSourceManager::stateToSettingValue(data->state));
 	obs_source_update(data->wrappedSource, settings);
