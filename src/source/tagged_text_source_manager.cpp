@@ -20,6 +20,7 @@ struct CurrentTexts {
 };
 
 CurrentTexts g_currentTexts;
+QMutex g_currentTextsMutex;
 
 struct SyncContext {
 	TaggedTextSourceManager::TextState state = TaggedTextSourceManager::TextState::Reserve;
@@ -63,6 +64,8 @@ bool syncTaggedSourceCallback(void *param, obs_source_t *source)
 
 void TaggedTextSourceManager::setCurrentText(TextState state, const QString &text)
 {
+	QMutexLocker locker(&g_currentTextsMutex);
+
 	switch (state) {
 	case TextState::Reserve:
 		g_currentTexts.reserve = text;
@@ -78,6 +81,8 @@ void TaggedTextSourceManager::setCurrentText(TextState state, const QString &tex
 
 QString TaggedTextSourceManager::currentText(TextState state)
 {
+	QMutexLocker locker(&g_currentTextsMutex);
+
 	switch (state) {
 	case TextState::Reserve:
 		return g_currentTexts.reserve;

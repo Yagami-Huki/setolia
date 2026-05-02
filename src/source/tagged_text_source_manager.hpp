@@ -3,6 +3,7 @@
 #include <obs-module.h>
 
 #include <QString>
+#include <QMutex>
 
 class TaggedTextSourceManager {
 public:
