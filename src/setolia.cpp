@@ -25,6 +25,8 @@ void SETOLIA_Dock::StopTimer()
 	onStreamingStopped();
 }
 
+static SETOLIA_Dock *g_setoliaDock = nullptr;
+
 bool obs_module_load(void)
 {
 	register_setolia_text_sources();
@@ -48,9 +50,20 @@ void obs_module_post_load(void)
 	const auto main_window = static_cast<QMainWindow *>(obs_frontend_get_main_window());
 
 	SETOLIA_Dock *setoliaDock = new SETOLIA_Dock(main_window);
+	g_setoliaDock = setoliaDock;
 	const auto title = QString::fromUtf8(obs_module_text("DOCK_TITLE"));
 	const auto name = "SETOLIA_Dock";
 	obs_frontend_add_dock_by_id(name, title.toUtf8().constData(), setoliaDock);
 
 	obs_frontend_add_event_callback(frontend_event_callback, setoliaDock);
+}
+
+void obs_module_unload(void)
+{
+	if (g_setoliaDock) {
+		obs_frontend_remove_event_callback(frontend_event_callback, g_setoliaDock);
+		obs_frontend_remove_dock("SETOLIA_Dock");
+		delete g_setoliaDock;
+		g_setoliaDock = nullptr;
+	}
 }
