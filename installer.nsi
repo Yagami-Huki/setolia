@@ -40,7 +40,7 @@ FunctionEnd
 
 Function un.onInit
   GetFullPathName $INSTDIR "$INSTDIR\.."
-FunctionENd
+FunctionEnd
 
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
