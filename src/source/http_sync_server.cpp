@@ -8,7 +8,7 @@
 
 #define PORT 8080
 
-HTTPSyncServer::HTTPSyncServer() : srv(std::make_unique<httplib::Server>()), srv_stopped(true), srv_running(false) {}
+HTTPSyncServer::HTTPSyncServer() : srv(std::make_unique<httplib::Server>()) {}
 
 HTTPSyncServer::~HTTPSyncServer()
 {
@@ -26,14 +26,14 @@ void HTTPSyncServer::startServer()
 
 	setupRoutes();
 
-	srv_stopped = false;
-	srv_running = true;
+	srv_stopped.store(false);
+	srv_running.store(true);
 
 	// Start server in background thread
 	srv_thread = std::thread([this]() {
 		if (!srv->listen("127.0.0.1", PORT)) {
 			blog(LOG_ERROR, "HTTPSyncServer: Failed to start server");
-			srv_running = false;
+			srv_running.store(false);
 		}
 		waitForShutdown();
 	});
@@ -47,7 +47,7 @@ void HTTPSyncServer::stopServer()
 
 	{
 		std::lock_guard<std::mutex> lock(srv_mutex);
-		srv_stopped = true;
+		srv_stopped.store(true);
 	}
 	srv_cond.notify_all();
 
@@ -59,7 +59,7 @@ void HTTPSyncServer::stopServer()
 		srv_thread.join();
 	}
 
-	srv_running = false;
+	srv_running.store(false);
 }
 
 bool HTTPSyncServer::isRunning() const
@@ -131,11 +131,11 @@ void HTTPSyncServer::setupRoutes()
 			while (true) {
 				// Wait for data update or server stop
 				srv_cond.wait(lock, [this, &lastSentData] {
-					return srv_stopped || (latestData != lastSentData);
+					return srv_stopped.load() || (latestData != lastSentData);
 				});
 
 				// Check if server is shutting down
-				if (srv_stopped) {
+				if (srv_stopped.load()) {
 					break;
 				}
 
@@ -182,5 +182,5 @@ void HTTPSyncServer::setupRoutes()
 void HTTPSyncServer::waitForShutdown()
 {
 	std::unique_lock<std::mutex> lock(srv_mutex);
-	srv_cond.wait(lock, [this] { return srv_stopped; });
+	srv_cond.wait(lock, [this] { return srv_stopped.load(); });
 }

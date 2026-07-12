@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <string>
 #include <thread>
 #include <mutex>
@@ -44,8 +45,8 @@ private:
 	// State
 	std::string latestData;
 	std::string cachedData;
-	bool srv_stopped = false;
-	bool srv_running = false;
+	std::atomic<bool> srv_stopped{true};
+	std::atomic<bool> srv_running{false};
 
 	// External callback
 	std::function<void()> onNextSongRequested;
