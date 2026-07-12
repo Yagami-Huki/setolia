@@ -14,7 +14,7 @@ LoadLanguageFile "${NSISDIR}\Contrib\Language files\Japanese.nlf"
 
 Name "${PLUGIN_NAME} ${PLUGIN_VERSION}"
 OutFile "${PLUGIN_NAME}-${PLUGIN_VERSION}-windows-x64-Installer.exe"
-InstallDir "$PROGRAMDATA\obs-studio\plugins\${PLUGIN_NAME}"
+InstallDir "$PROGRAMFILES\obs-studio\plugins\${PLUGIN_NAME}"
 
 !include "MUI2.nsh"
 
@@ -23,6 +23,11 @@ InstallDir "$PROGRAMDATA\obs-studio\plugins\${PLUGIN_NAME}"
 
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
+
+Function .onInit
+  SetShellVarContext all
+  StrCpy $INSTDIR "$APPDATA\obs-studio\plugins\${PLUGIN_NAME}"
+FunctionEnd
 
 Section "Install"
   SetOutPath "$INSTDIR\bin\64bit"
