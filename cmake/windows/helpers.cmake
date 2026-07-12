@@ -62,7 +62,7 @@ endfunction()
 function(target_install_resources target)
   message(DEBUG "Installing resources for target ${target}...")
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/data")
-    file(GLOB_RECURSE data_files "${CMAKE_CURRENT_SOURCE_DIR}/data/*")
+    file(GLOB_RECURSE data_files LIST_DIRECTORIES false "${CMAKE_CURRENT_SOURCE_DIR}/data/*")
     foreach(data_file IN LISTS data_files)
       cmake_path(
         RELATIVE_PATH
@@ -71,6 +71,7 @@ function(target_install_resources target)
         OUTPUT_VARIABLE relative_path
       )
       cmake_path(GET relative_path PARENT_PATH relative_path)
+      set_source_files_properties("${data_file}" PROPERTIES HEADER_FILE_ONLY TRUE)
       target_sources(${target} PRIVATE "${data_file}")
       source_group("Resources/${relative_path}" FILES "${data_file}")
     endforeach()
@@ -104,5 +105,6 @@ function(target_add_resource target resource)
     COMMENT "Copy ${target} resource ${resource} to rundir"
     VERBATIM
   )
+  set_source_files_properties("${resource}" PROPERTIES HEADER_FILE_ONLY TRUE)
   source_group("Resources" FILES "${resource}")
 endfunction()
