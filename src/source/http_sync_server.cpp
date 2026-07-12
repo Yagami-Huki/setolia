@@ -1,6 +1,6 @@
 #include "http_sync_server.hpp"
 
-#include "../deps/httplib.h"
+#include "../../deps/httplib.h"
 
 #include <obs-module.h>
 
