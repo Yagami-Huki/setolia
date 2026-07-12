@@ -1,0 +1,37 @@
+# Auto detect text files and ensure LF line endings
+* text=auto eol=lf
+
+# Shell scripts (extensionless) - always LF, always text
+.github/scripts/build-macos text eol=lf
+.github/scripts/build-ubuntu text eol=lf
+.github/scripts/package-macos text eol=lf
+.github/scripts/package-ubuntu text eol=lf
+build-aux/.run-format.zsh text eol=lf
+*.zsh text eol=lf
+*.sh text eol=lf
+
+# Symlinks in build-aux - prevent text conversion
+build-aux/run-clang-format -text
+build-aux/run-gersemi -text
+build-aux/run-swift-format -text
+
+# Source code
+*.cpp text eol=lf
+*.hpp text eol=lf
+*.c text eol=lf
+*.h text eol=lf
+
+# Web templates
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+
+# Config files
+*.cmake text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.ini text eol=lf
+*.md text eol=lf
+*.nsi text eol=lf
+CMakeLists.txt text eol=lf
