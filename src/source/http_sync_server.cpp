@@ -3,6 +3,8 @@
 #include "../../deps/httplib.h"
 
 #include <obs-module.h>
+#include <QCryptographicHash>
+#include <QByteArray>
 
 #include <iostream>
 
@@ -144,6 +146,99 @@ void HTTPSyncServer::setupRoutes()
 					std::string payload = "data: " + latestData + "\n\n";
 
 					if (!sink.write(payload.data(), payload.size())) {
+						break;
+					}
+
+					lastSentData = latestData;
+				}
+			}
+			return true;
+		});
+	});
+
+	// GET /ws - WebSocket endpoint for real-time updates
+	srv->Get("/ws", [this](const httplib::Request &req, httplib::Response &res) {
+		res.set_header("Access-Control-Allow-Origin", "*");
+
+		if (req.get_header_value("Upgrade") != "websocket") {
+			res.status = 400;
+			res.set_content("Bad Request: Expected WebSocket upgrade", "text/plain");
+			return;
+		}
+
+		std::string ws_key = req.get_header_value("Sec-WebSocket-Key");
+		if (ws_key.empty()) {
+			res.status = 400;
+			res.set_content("Bad Request: Missing Sec-WebSocket-Key", "text/plain");
+			return;
+		}
+
+		std::string magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+		std::string combined = ws_key + magic;
+		QByteArray hash = QCryptographicHash::hash(QByteArray::fromStdString(combined), QCryptographicHash::Sha1);
+		std::string accept_key = hash.toBase64().toStdString();
+
+		res.status = 101;
+		res.set_header("Upgrade", "websocket");
+		res.set_header("Connection", "Upgrade");
+		res.set_header("Sec-WebSocket-Accept", accept_key);
+
+		res.set_content_provider("text/plain", [this](size_t, httplib::DataSink &sink) -> bool {
+			std::string lastSentData = "";
+			std::unique_lock<std::mutex> lock(srv_mutex);
+
+			// Send initial payload if available
+			if (!latestData.empty()) {
+				std::string text = latestData;
+				size_t len = text.size();
+				std::string frame;
+				frame.push_back((char)0x81); // FIN + Text Opcode
+				if (len <= 125) {
+					frame.push_back((char)len);
+				} else if (len <= 65535) {
+					frame.push_back((char)126);
+					frame.push_back((char)((len >> 8) & 0xFF));
+					frame.push_back((char)(len & 0xFF));
+				} else {
+					frame.push_back((char)127);
+					for (int i = 7; i >= 0; i--) {
+						frame.push_back((char)((len >> (i * 8)) & 0xFF));
+					}
+				}
+				frame += text;
+				if (!sink.write(frame.data(), frame.size())) return false;
+				lastSentData = latestData;
+			}
+
+			while (true) {
+				srv_cond.wait(lock, [this, &lastSentData] {
+					return srv_stopped.load() || (latestData != lastSentData);
+				});
+
+				if (srv_stopped.load()) {
+					break;
+				}
+
+				if (latestData != lastSentData) {
+					std::string text = latestData;
+					size_t len = text.size();
+					std::string frame;
+					frame.push_back((char)0x81);
+					if (len <= 125) {
+						frame.push_back((char)len);
+					} else if (len <= 65535) {
+						frame.push_back((char)126);
+						frame.push_back((char)((len >> 8) & 0xFF));
+						frame.push_back((char)(len & 0xFF));
+					} else {
+						frame.push_back((char)127);
+						for (int i = 7; i >= 0; i--) {
+							frame.push_back((char)((len >> (i * 8)) & 0xFF));
+						}
+					}
+					frame += text;
+
+					if (!sink.write(frame.data(), frame.size())) {
 						break;
 					}
 

@@ -37,18 +37,24 @@ async function fetchInitialData() {
 
 window.addEventListener("load", () => {
     fetchInitialData();
-    try {
-        const evtSource = new EventSource("http://127.0.0.1:8080/events");
-        evtSource.onmessage = function (event) {
-            const data = JSON.parse(event.data);
-            updatePage(data);
-        };
-        evtSource.onerror = function (_) {
-            evtSource.close();
-        };
-    } catch (e) {
-        console.log("EventSource skipped.");
+    function connectWebSocket() {
+        try {
+            const ws = new WebSocket("ws://127.0.0.1:8080/ws");
+            ws.onmessage = function (event) {
+                const data = JSON.parse(event.data);
+                updatePage(data);
+            };
+            ws.onclose = function () {
+                setTimeout(connectWebSocket, 3000);
+            };
+            ws.onerror = function (_) {
+                ws.close();
+            };
+        } catch (e) {
+            console.log("WebSocket skipped.");
+        }
     }
+    connectWebSocket();
 
     const nowSingingElem = document.getElementById("now-singing");
     const setlistElem = document.getElementById("set-list");
