@@ -174,8 +174,9 @@ void DockActions::lyricSearch() const
 		return;
 	}
 
-	const QString query = "https://utaten.com/search?title=" + viewParts.lyricSearchText->text().trimmed();
-	QDesktopServices::openUrl(QUrl(query));
+	const QString encoded = QUrl::toPercentEncoding(viewParts.lyricSearchText->text().trimmed());
+	const QUrl url("https://utaten.com/search?title=" + encoded);
+	QDesktopServices::openUrl(url);
 }
 
 void DockActions::startClock()
