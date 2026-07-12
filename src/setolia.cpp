@@ -7,7 +7,6 @@
 #include "source/setolia_text_sources.hpp"
 
 #define PLUGIN_NAME "SETOLIA"
-#define PLUGIN_VERSION "1.1.0"
 
 OBS_DECLARE_MODULE();
 OBS_MODULE_AUTHOR("Yagami Huki");

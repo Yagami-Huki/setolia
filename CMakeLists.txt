@@ -54,4 +54,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
   src/config/config_manager.hpp
   )
 
+target_compile_definitions(
+  ${CMAKE_PROJECT_NAME}
+  PRIVATE PLUGIN_VERSION="${CMAKE_PROJECT_VERSION}"
+)
+
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})
