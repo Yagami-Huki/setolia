@@ -1,3 +1,10 @@
+// Connection target: when served by the SETOLIA plugin (http://127.0.0.1 / http://localhost),
+// use the same host; otherwise (file://, http://absolute, ...) fall back to 127.0.0.1:8080.
+const SETOLIA_HOST =
+    location.protocol === "http:" && (location.hostname === "127.0.0.1" || location.hostname === "localhost")
+        ? location.host
+        : "127.0.0.1:8080";
+
 function updatePage(data) {
     const nowSingingElem = document.getElementById("now-singing");
     if (nowSingingElem) {
@@ -41,7 +48,7 @@ function updatePage(data) {
 
 async function fetchInitialData() {
     try {
-        const response = await fetch("http://127.0.0.1:8080/data");
+        const response = await fetch(`http://${SETOLIA_HOST}/data`);
         if (!response.ok) {
             return;
         }
@@ -56,7 +63,7 @@ window.addEventListener("load", () => {
     fetchInitialData();
     function connectWebSocket() {
         try {
-            const ws = new WebSocket("ws://127.0.0.1:8080/ws");
+            const ws = new WebSocket(`ws://${SETOLIA_HOST}/ws`);
             ws.onmessage = function (event) {
                 const data = JSON.parse(event.data);
                 updatePage(data);

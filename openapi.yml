@@ -67,3 +67,32 @@ paths:
               schema:
                 type: string
                 example: OK
+  /templates/{path}:
+    get:
+      description: |
+        Serve files from the plugin's template folder (obs_module_file("templates")).
+        Browser sources added by SETOLIA load http://127.0.0.1:8080/templates/<template name>/index.html.
+        Template names are percent-encoded. Responses include "Cache-Control: no-cache"
+        so edits to template files are reflected on the next reload.
+      parameters:
+        - name: path
+          in: path
+          required: true
+          description: Path relative to the template folder, e.g. light/index.html
+          schema:
+            type: string
+          example: light/index.html
+      responses:
+        "200":
+          description: OK
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-cache
+          content:
+            text/html: {}
+            text/css: {}
+            text/javascript: {}
+        "404":
+          description: Not Found

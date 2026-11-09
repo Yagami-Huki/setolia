@@ -1,4 +1,5 @@
 #include "http_sync_server.hpp"
+#include "template_paths.hpp"
 
 #include "../../deps/httplib.h"
 
@@ -7,8 +8,6 @@
 #include <QByteArray>
 
 #include <iostream>
-
-#define PORT 8080
 
 HTTPSyncServer::HTTPSyncServer() : srv(std::make_unique<httplib::Server>()) {}
 
@@ -33,7 +32,7 @@ void HTTPSyncServer::startServer()
 
 	// Start server in background thread
 	srv_thread = std::thread([this]() {
-		if (!srv->listen("127.0.0.1", PORT)) {
+		if (!srv->listen("127.0.0.1", setolia::kHttpServerPort)) {
 			blog(LOG_ERROR, "HTTPSyncServer: Failed to start server");
 			srv_running.store(false);
 		}
@@ -106,6 +105,18 @@ void HTTPSyncServer::setupRoutes()
 	if (!srv) {
 		blog(LOG_ERROR, "HTTPSyncServer: HTTP server not initialized");
 		return;
+	}
+
+	// GET /templates/* - Serve template files so browser sources load them over http://127.0.0.1
+	// instead of as local files (OBS 33 / CEF blocks fetch from file:// pages to 127.0.0.1).
+	// no-cache: edits to templates are picked up on the next reload.
+	srv->remove_mount_point(setolia::kTemplatesMountPoint); // avoid duplicates when restarted
+	const QString templatesDir = setolia::templatesDirectoryPath();
+	if (templatesDir.isEmpty() ||
+	    !srv->set_mount_point(setolia::kTemplatesMountPoint, templatesDir.toUtf8().toStdString(),
+				  {{"Cache-Control", "no-cache"}})) {
+		blog(LOG_WARNING, "HTTPSyncServer: Failed to mount templates directory: %s",
+		     templatesDir.toUtf8().constData());
 	}
 
 	// GET /data - Retrieve current state as JSON

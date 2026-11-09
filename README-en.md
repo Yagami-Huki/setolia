@@ -25,6 +25,12 @@ The English version of the user manual is currently under preparation.
 
 Please refer to the Japanese manual available at [Booth](https://logicbox.booth.pm/items/7541386).
 
+### OBS 33 and later
+
+OBS 33 blocks requests to `127.0.0.1` from browser sources loaded as local files, so templates are now served by the plugin's HTTP server (`http://127.0.0.1:8080/templates/...`).
+
+Template browser sources added with earlier versions are converted to the URL form automatically when OBS starts and when the scene collection changes, so you don't need to re-add your templates.
+
 ## License & Acknowledgements
 
 This software is licensed under the GPL-3.0 License.
