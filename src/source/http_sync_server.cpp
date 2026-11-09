@@ -186,7 +186,8 @@ void HTTPSyncServer::setupRoutes()
 
 		std::string magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 		std::string combined = ws_key + magic;
-		QByteArray hash = QCryptographicHash::hash(QByteArray::fromStdString(combined), QCryptographicHash::Sha1);
+		QByteArray hash =
+			QCryptographicHash::hash(QByteArray::fromStdString(combined), QCryptographicHash::Sha1);
 		std::string accept_key = hash.toBase64().toStdString();
 
 		res.status = 101;
@@ -217,7 +218,8 @@ void HTTPSyncServer::setupRoutes()
 					}
 				}
 				frame += text;
-				if (!sink.write(frame.data(), frame.size())) return false;
+				if (!sink.write(frame.data(), frame.size()))
+					return false;
 				lastSentData = latestData;
 			}
 
