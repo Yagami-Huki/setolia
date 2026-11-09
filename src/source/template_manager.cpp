@@ -1,4 +1,5 @@
 #include "template_manager.hpp"
+#include "template_paths.hpp"
 
 #include <obs-frontend-api.h>
 #include <obs-module.h>
@@ -10,16 +11,64 @@
 #include <QJsonObject>
 #include <QProcess>
 
+#include <cstring>
+
+using setolia::templatesDirectoryPath;
+
 namespace {
-QString templatesDirectoryPath()
+QString normalizePath(const QString &path)
 {
-	char *templatesDir = obs_module_file("templates");
-	if (!templatesDir) {
-		return QString();
+	return QDir::cleanPath(QDir::fromNativeSeparators(path));
+}
+
+Qt::CaseSensitivity pathCaseSensitivity()
+{
+#if defined(_WIN32)
+	return Qt::CaseInsensitive;
+#else
+	return Qt::CaseSensitive;
+#endif
+}
+
+struct MigrationContext {
+	QString templatesDirPrefix; // normalized, ends with '/'
+	int converted = 0;
+};
+
+bool migrateBrowserSource(void *param, obs_source_t *source)
+{
+	auto *ctx = static_cast<MigrationContext *>(param);
+
+	const char *sourceId = obs_source_get_unversioned_id(source);
+	if (!sourceId || strcmp(sourceId, "browser_source") != 0) {
+		return true;
 	}
-	QString path = QString::fromUtf8(templatesDir);
-	bfree(templatesDir);
-	return path;
+
+	obs_data_t *settings = obs_source_get_settings(source);
+	if (!settings) {
+		return true;
+	}
+
+	if (obs_data_get_bool(settings, "is_local_file")) {
+		const QString localFile = normalizePath(QString::fromUtf8(obs_data_get_string(settings, "local_file")));
+		if (localFile.startsWith(ctx->templatesDirPrefix, pathCaseSensitivity())) {
+			const QString relativePath = localFile.mid(ctx->templatesDirPrefix.size());
+			const QString url = setolia::templateUrl(relativePath);
+
+			obs_data_t *update = obs_data_create();
+			obs_data_set_bool(update, "is_local_file", false);
+			obs_data_set_string(update, "url", url.toUtf8().constData());
+			obs_source_update(source, update);
+			obs_data_release(update);
+
+			ctx->converted++;
+			blog(LOG_INFO, "[SETOLIA] Migrated browser source '%s' from local file '%s' to '%s'",
+			     obs_source_get_name(source), localFile.toUtf8().constData(), url.toUtf8().constData());
+		}
+	}
+
+	obs_data_release(settings);
+	return true;
 }
 } // namespace
 
@@ -62,7 +111,6 @@ bool TemplateManager::addTemplateToCurrentScene(const QString &templateName) con
 	}
 
 	const QString templateDir = QFileInfo(baseDir, templateName).absoluteFilePath();
-	const QString templatePath = templateDir + "/index.html";
 
 	if (!QFileInfo(templateDir, "index.html").isFile() || !QFileInfo(templateDir, "script.js").isFile() ||
 	    !QFileInfo(templateDir, "style.css").isFile()) {
@@ -91,8 +139,9 @@ bool TemplateManager::addTemplateToCurrentScene(const QString &templateName) con
 	}
 
 	obs_data_t *settings = obs_data_create();
-	obs_data_set_bool(settings, "is_local_file", true);
-	obs_data_set_string(settings, "local_file", templatePath.toUtf8().constData());
+	// Load via the plugin's HTTP server: OBS 33 (CEF) blocks fetch/EventSource from local-file pages to 127.0.0.1.
+	obs_data_set_bool(settings, "is_local_file", false);
+	obs_data_set_string(settings, "url", setolia::templateUrl(templateName + "/index.html").toUtf8().constData());
 	obs_data_set_int(settings, "width", width);
 	obs_data_set_int(settings, "height", height);
 	obs_data_set_string(settings, "css", css.toUtf8().constData());
@@ -122,4 +171,21 @@ bool TemplateManager::addTemplateToCurrentScene(const QString &templateName) con
 	obs_source_release(currentSceneSource);
 	obs_source_release(browserSource);
 	return true;
+}
+
+int TemplateManager::migrateLocalFileSources() const
+{
+	const QString baseDir = templatesDirectoryPath();
+	if (baseDir.isEmpty()) {
+		return 0;
+	}
+
+	MigrationContext ctx;
+	ctx.templatesDirPrefix = normalizePath(baseDir) + "/";
+	obs_enum_sources(migrateBrowserSource, &ctx);
+
+	if (ctx.converted > 0) {
+		blog(LOG_INFO, "[SETOLIA] Migrated %d template browser source(s) to HTTP URLs", ctx.converted);
+	}
+	return ctx.converted;
 }

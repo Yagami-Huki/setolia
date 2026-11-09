@@ -5,6 +5,7 @@
 #include <QMainWindow>
 
 #include "source/setolia_text_sources.hpp"
+#include "source/template_manager.hpp"
 
 #define PLUGIN_NAME "SETOLIA"
 
@@ -41,6 +42,10 @@ static void frontend_event_callback(obs_frontend_event event, void *priv_data)
 		setoliaDock->StartTimer();
 	} else if (event == OBS_FRONTEND_EVENT_STREAMING_STOPPED) {
 		setoliaDock->StopTimer();
+	} else if (event == OBS_FRONTEND_EVENT_FINISHED_LOADING ||
+		   event == OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGED) {
+		// Convert template browser sources saved as local files to the HTTP URL form (OBS 33 / CEF LNA).
+		TemplateManager().migrateLocalFileSources();
 	}
 }
 
