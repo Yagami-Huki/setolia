@@ -8,7 +8,7 @@ Setlist plugin for OBS Studio
 
 - Synchronized timestamp with the streaming time
 - Real-time clock display
-- Shortcut button to [lyrics search site](<(https://utaten.com)>)
+- Shortcut button to [lyrics search site](https://utaten.com)
 - Button to add pre-configured browser source
 - Support custom template
 - Supports operation from Stream Deck
@@ -18,6 +18,30 @@ Setlist plugin for OBS Studio
 Binaries for Windows, MacOS, and Linux are available in the [Releases](https://github.com/Yagami-Huki/setolia/releases) section.
 
 Also, the latest installer for Windows is available at [Booth](https://logicbox.booth.pm/items/7541386).
+
+The Windows build supports both the new plugin layout introduced in OBS 33 and the layout used by OBS 32 and earlier.
+
+### Windows (manual install from the zip)
+
+Extract the zip into `C:\ProgramData\obs-studio\plugins\setolia\`. The result should look like this:
+
+```
+C:\ProgramData\obs-studio\plugins\setolia\
+├── setolia.dll          (loaded by OBS 33 and later)
+├── bin\64bit\setolia.dll (loaded by OBS 32 and earlier)
+└── data\
+```
+
+Both `setolia.dll` files are identical. OBS 33 and later load the one at the top level and skip the copy in `bin\64bit`.
+
+### Windows (portable OBS)
+
+- OBS 33 and later: `<OBS>\plugins\setolia\setolia.dll` and `<OBS>\plugins\setolia\data\` (portable OBS ignores plugins in `C:\ProgramData`)
+- OBS 32 and earlier: `<OBS>\obs-plugins\64bit\setolia.dll` and `<OBS>\data\obs-plugins\setolia\`
+
+### Upgrading from older versions
+
+If an older version is still in `C:\Program Files\obs-studio\obs-plugins\64bit\setolia.dll`, OBS 32 and earlier may load the plugin twice. The installer detects this and asks whether to remove the old files. If you install manually from the zip, delete the old files (`obs-plugins\64bit\setolia.dll` and `data\obs-plugins\setolia\`) yourself.
 
 ## Usage
 
