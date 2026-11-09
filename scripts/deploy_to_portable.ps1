@@ -27,31 +27,83 @@ if (-not (Test-Path $SourcePluginPath)) {
     exit 1
 }
 
+# コピー元の dll: 新しい構造 (フォルダ直下) を優先し、なければ bin\64bit から取る
+$dllSourceFile = Join-Path $SourcePluginPath "setolia.dll"
+if (-not (Test-Path $dllSourceFile)) {
+    $dllSourceFile = Join-Path $SourcePluginPath "bin\64bit\setolia.dll"
+}
+if (-not (Test-Path $dllSourceFile)) {
+    Write-Error "setolia.dll not found in $SourcePluginPath (checked root and bin\64bit)."
+    exit 1
+}
+Write-Host "Using DLL: $dllSourceFile"
+
+# 同じ場所に PDB があれば一緒にコピーする
+$pdbSourceFile = [System.IO.Path]::ChangeExtension($dllSourceFile, ".pdb")
+$dataSource = Join-Path $SourcePluginPath "data"
+
+function Copy-PluginFiles {
+    param(
+        [string]$DllDest,
+        [string]$DataDest
+    )
+
+    New-Item -ItemType Directory -Force -Path $DllDest | Out-Null
+    Copy-Item -Path $dllSourceFile -Destination $DllDest -Force
+    if (Test-Path $pdbSourceFile) {
+        Copy-Item -Path $pdbSourceFile -Destination $DllDest -Force
+    }
+    Write-Host "  Copied binaries to $DllDest"
+
+    if (Test-Path $dataSource) {
+        New-Item -ItemType Directory -Force -Path $DataDest | Out-Null
+        Copy-Item -Path "$dataSource\*" -Destination $DataDest -Recurse -Force
+        Write-Host "  Copied data to $DataDest"
+    }
+}
+
+function Get-ObsMajorVersion {
+    param([string]$ObsDir)
+
+    $obsExe = Join-Path $ObsDir "bin\64bit\obs64.exe"
+    if (-not (Test-Path $obsExe)) {
+        return $null
+    }
+    $fileVersion = (Get-Item $obsExe).VersionInfo.FileVersion
+    if ($fileVersion -match '^\s*(\d+)') {
+        return [int]$Matches[1]
+    }
+    return $null
+}
+
 foreach ($obsDir in $PortableDirs) {
     Write-Host "Deploying to: $obsDir" -ForegroundColor Green
 
-    # 1. DLLファイルのコピー (bin\64bit -> obs-plugins\64bit)
-    $dllSource = Join-Path $SourcePluginPath "bin\64bit"
-    $dllDest = Join-Path $obsDir "obs-plugins\64bit"
+    $major = Get-ObsMajorVersion -ObsDir $obsDir
+    $deployNew = $false
+    $deployLegacy = $false
 
-    if (Test-Path $dllSource) {
-        if (-not (Test-Path $dllDest)) {
-            New-Item -ItemType Directory -Force -Path $dllDest | Out-Null
-        }
-        Copy-Item -Path "$dllSource\*" -Destination $dllDest -Recurse -Force
-        Write-Host "  Copied binaries to $dllDest"
+    if ($null -eq $major) {
+        Write-Warning "  Could not determine OBS version from $obsDir\bin\64bit\obs64.exe. Deploying to both layouts."
+        $deployNew = $true
+        $deployLegacy = $true
+    } elseif ($major -ge 33) {
+        Write-Host "  Detected OBS $major (new plugin layout)"
+        $deployNew = $true
+    } else {
+        Write-Host "  Detected OBS $major (legacy plugin layout)"
+        $deployLegacy = $true
     }
 
-    # 2. リソースファイルのコピー (data -> data\obs-plugins\setolia)
-    $dataSource = Join-Path $SourcePluginPath "data"
-    $dataDest = Join-Path $obsDir "data\obs-plugins\setolia"
+    # OBS 33 以降: <OBS>\plugins\setolia\setolia.dll と <OBS>\plugins\setolia\data\
+    if ($deployNew) {
+        $pluginDir = Join-Path $obsDir "plugins\setolia"
+        Copy-PluginFiles -DllDest $pluginDir -DataDest (Join-Path $pluginDir "data")
+    }
 
-    if (Test-Path $dataSource) {
-        if (-not (Test-Path $dataDest)) {
-            New-Item -ItemType Directory -Force -Path $dataDest | Out-Null
-        }
-        Copy-Item -Path "$dataSource\*" -Destination $dataDest -Recurse -Force
-        Write-Host "  Copied data to $dataDest"
+    # OBS 32 以前: <OBS>\obs-plugins\64bit\ と <OBS>\data\obs-plugins\setolia\
+    if ($deployLegacy) {
+        Copy-PluginFiles -DllDest (Join-Path $obsDir "obs-plugins\64bit") -DataDest (Join-Path $obsDir "data\obs-plugins\setolia")
     }
 }
 

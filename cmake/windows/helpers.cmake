@@ -22,12 +22,16 @@ function(set_target_properties_plugin target)
 
   set_target_properties(${target} PROPERTIES VERSION 0 SOVERSION ${PLUGIN_VERSION})
 
-  install(TARGETS ${target} RUNTIME DESTINATION "bin/64bit" LIBRARY DESTINATION "bin/64bit")
+  # OBS 33+ loads plugins from the plugin folder root (<plugins>/<name>/<name>.dll).
+  # OBS 32 and earlier only look in <plugins>/<name>/bin/64bit/, so install a copy there too.
+  # When both exist, OBS 33 loads the root dll and skips the legacy one.
+  install(TARGETS ${target} RUNTIME DESTINATION "." LIBRARY DESTINATION ".")
+  install(FILES "$<TARGET_FILE:${target}>" DESTINATION "bin/64bit")
 
   install(
     FILES "$<TARGET_PDB_FILE:${target}>"
     CONFIGURATIONS RelWithDebInfo Debug Release
-    DESTINATION "bin/64bit"
+    DESTINATION "."
     OPTIONAL
   )
 
