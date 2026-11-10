@@ -35,6 +35,8 @@ public:
 	// Streaming/HTTP server lifecycle
 	void startStreaming();
 	void stopStreaming();
+	// Restarts the HTTP server on the port entered in the dock and rewrites template sources to it.
+	void applyServerPort();
 
 	// Configuration lifecycle
 	void applyConfig(const Config &config);
@@ -44,6 +46,8 @@ public:
 
 private:
 	void notifyStateChanged();
+	bool startServer();
+	void updateServerStatus(bool running, int port);
 	Config getConfigForSave() const;
 
 	DockViewParts &viewParts;

@@ -16,24 +16,21 @@
 using setolia::templatesDirectoryPath;
 
 namespace {
-QString normalizePath(const QString &path)
-{
-	return QDir::cleanPath(QDir::fromNativeSeparators(path));
-}
-
-Qt::CaseSensitivity pathCaseSensitivity()
-{
-#if defined(_WIN32)
-	return Qt::CaseInsensitive;
-#else
-	return Qt::CaseSensitive;
-#endif
-}
-
 struct MigrationContext {
-	QString templatesDirPrefix; // normalized, ends with '/'
+	QString templatesDir;
+	QStringList templateNames;
+	int port = setolia::kDefaultHttpServerPort;
 	int converted = 0;
 };
+
+void applyTemplateUrl(obs_source_t *source, const QString &url)
+{
+	obs_data_t *update = obs_data_create();
+	obs_data_set_bool(update, "is_local_file", false);
+	obs_data_set_string(update, "url", url.toUtf8().constData());
+	obs_source_update(source, update);
+	obs_data_release(update);
+}
 
 bool migrateBrowserSource(void *param, obs_source_t *source)
 {
@@ -50,20 +47,26 @@ bool migrateBrowserSource(void *param, obs_source_t *source)
 	}
 
 	if (obs_data_get_bool(settings, "is_local_file")) {
-		const QString localFile = normalizePath(QString::fromUtf8(obs_data_get_string(settings, "local_file")));
-		if (localFile.startsWith(ctx->templatesDirPrefix, pathCaseSensitivity())) {
-			const QString relativePath = localFile.mid(ctx->templatesDirPrefix.size());
-			const QString url = setolia::templateUrl(relativePath);
-
-			obs_data_t *update = obs_data_create();
-			obs_data_set_bool(update, "is_local_file", false);
-			obs_data_set_string(update, "url", url.toUtf8().constData());
-			obs_source_update(source, update);
-			obs_data_release(update);
-
+		const QString localFile = QString::fromUtf8(obs_data_get_string(settings, "local_file"));
+		const auto match =
+			setolia::templateRelativePathFromLocalFile(localFile, ctx->templatesDir, ctx->templateNames);
+		if (match) {
+			const QString url = setolia::templateUrl(match->relativePath, ctx->port);
+			applyTemplateUrl(source, url);
 			ctx->converted++;
-			blog(LOG_INFO, "[SETOLIA] Migrated browser source '%s' from local file '%s' to '%s'",
-			     obs_source_get_name(source), localFile.toUtf8().constData(), url.toUtf8().constData());
+			blog(LOG_INFO, "[SETOLIA] Migrated browser source '%s' (%s) from local file '%s' to '%s'",
+			     obs_source_get_name(source), setolia::templateMigrationRuleName(match->rule),
+			     localFile.toUtf8().constData(), url.toUtf8().constData());
+		}
+	} else {
+		const QString oldUrl = QString::fromUtf8(obs_data_get_string(settings, "url"));
+		if (const auto url = setolia::rewriteTemplateUrlPort(oldUrl, ctx->port)) {
+			applyTemplateUrl(source, *url);
+			ctx->converted++;
+			blog(LOG_INFO, "[SETOLIA] Migrated browser source '%s' (%s) from '%s' to '%s'",
+			     obs_source_get_name(source),
+			     setolia::templateMigrationRuleName(setolia::TemplateMigrationRule::PortChange),
+			     oldUrl.toUtf8().constData(), url->toUtf8().constData());
 		}
 	}
 
@@ -173,19 +176,17 @@ bool TemplateManager::addTemplateToCurrentScene(const QString &templateName) con
 	return true;
 }
 
-int TemplateManager::migrateLocalFileSources() const
+int TemplateManager::migrateTemplateSources() const
 {
-	const QString baseDir = templatesDirectoryPath();
-	if (baseDir.isEmpty()) {
-		return 0;
-	}
-
 	MigrationContext ctx;
-	ctx.templatesDirPrefix = normalizePath(baseDir) + "/";
+	ctx.templatesDir = templatesDirectoryPath(); // may be empty: rule (b) and port rewrites still apply
+	ctx.templateNames = listTemplateNames();
+	ctx.port = setolia::httpServerPort();
 	obs_enum_sources(migrateBrowserSource, &ctx);
 
 	if (ctx.converted > 0) {
-		blog(LOG_INFO, "[SETOLIA] Migrated %d template browser source(s) to HTTP URLs", ctx.converted);
+		blog(LOG_INFO, "[SETOLIA] Migrated %d template browser source(s) to %s", ctx.converted,
+		     setolia::templateUrl(QString(), ctx.port).toUtf8().constData());
 	}
 	return ctx.converted;
 }

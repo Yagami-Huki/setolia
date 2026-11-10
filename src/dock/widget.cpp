@@ -2,6 +2,7 @@
 
 #include "action.hpp"
 #include "../config/config_manager.hpp"
+#include "../source/template_paths.hpp"
 
 #include <obs-module.h>
 
@@ -12,6 +13,7 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSpinBox>
 #include <QTextEdit>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -119,6 +121,20 @@ void SetoliaDockWidget::buildUI()
 	viewParts.reloadTemplateButton = new QPushButton(obs_module_text("RELOAD_TEMPLATE_BUTTON"), content);
 	viewParts.addButton = new QPushButton(obs_module_text("ADD_BUTTON"), content);
 
+	auto *serverPortLabel = new QLabel(obs_module_text("SERVER_PORT_LABEL"), content);
+	serverPortLabel->setStyleSheet("font-weight: bold;");
+	auto *serverPortLayout = new QHBoxLayout();
+	viewParts.serverPortSpinBox = new QSpinBox(content);
+	viewParts.serverPortSpinBox->setRange(setolia::kMinHttpServerPort, setolia::kMaxHttpServerPort);
+	viewParts.serverPortSpinBox->setValue(setolia::kDefaultHttpServerPort);
+	viewParts.serverPortSpinBox->setGroupSeparatorShown(false);
+	viewParts.applyServerPortButton = new QPushButton(obs_module_text("SERVER_PORT_APPLY_BUTTON"), content);
+	viewParts.applyServerPortButton->setCursor(Qt::PointingHandCursor);
+	serverPortLayout->addWidget(viewParts.serverPortSpinBox, 1);
+	serverPortLayout->addWidget(viewParts.applyServerPortButton);
+	viewParts.serverStatusLabel = new QLabel(content);
+	viewParts.serverStatusLabel->setWordWrap(true);
+
 	contentLayout->addWidget(viewParts.clockLabel);
 	contentLayout->addWidget(viewParts.clockDisplay);
 	contentLayout->addSpacing(10);
@@ -146,6 +162,10 @@ void SetoliaDockWidget::buildUI()
 	contentLayout->addSpacing(10);
 	contentLayout->addWidget(viewParts.clockToggle);
 	contentLayout->addWidget(viewParts.nextToggle);
+	contentLayout->addSpacing(10);
+	contentLayout->addWidget(serverPortLabel);
+	contentLayout->addLayout(serverPortLayout);
+	contentLayout->addWidget(viewParts.serverStatusLabel);
 	contentLayout->addStretch();
 
 	scrollArea->setWidget(content);
@@ -173,6 +193,7 @@ void SetoliaDockWidget::wireSignals()
 		[this]() { actions->openTemplateDirectory(); });
 	connect(viewParts.reloadTemplateButton, &QPushButton::clicked, this, [this]() { actions->reloadTemplates(); });
 	connect(viewParts.addButton, &QPushButton::clicked, this, [this]() { actions->addSelectedTemplateToScene(); });
+	connect(viewParts.applyServerPortButton, &QPushButton::clicked, this, [this]() { actions->applyServerPort(); });
 
 	connect(viewParts.clockToggle, &QCheckBox::toggled, this,
 		[this](bool checked) { actions->onClockTogglechanged(checked); });

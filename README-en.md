@@ -53,7 +53,13 @@ Please refer to the Japanese manual available at [Booth](https://logicbox.booth.
 
 OBS 33 blocks requests to `127.0.0.1` from browser sources loaded as local files, so templates are now served by the plugin's HTTP server (`http://127.0.0.1:8080/templates/...`).
 
-Template browser sources added with earlier versions are converted to the URL form automatically when OBS starts and when the scene collection changes, so you don't need to re-add your templates.
+Template browser sources added with earlier versions are converted to the URL form automatically when OBS starts and when the scene collection changes, so you don't need to re-add your templates. Sources that still point at an old install location (`C:\Program Files\obs-studio\data\obs-plugins\setolia\templates\...`, or `<OBS>\data\obs-plugins\setolia\templates\...` of a portable OBS 32) are converted too, as long as a template with the same name exists.
+
+### Changing the server port
+
+The HTTP server uses port `8080` by default. If another application already uses 8080, the dock shows "Port 8080 is not available" in red. Enter another number (1024–65535) under "Server Port" at the bottom of the dock and press "Apply": the server restarts on that port and existing template browser sources are rewritten to the new port. The setting is saved and used on the next start.
+
+If you call `http://127.0.0.1:8080/next` from Stream Deck or similar tools, update the port in those URLs as well.
 
 ## License & Acknowledgements
 

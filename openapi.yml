@@ -3,7 +3,13 @@ info:
   title: SETOLIA API
   version: "1.0"
 servers:
-  - url: http://127.0.0.1:8080
+  - url: http://127.0.0.1:{port}
+    description: |
+      The port can be changed in the SETOLIA dock ("Server Port"). Clients that call the API directly
+      (e.g. Stream Deck calling /next) must use the same port.
+    variables:
+      port:
+        default: "8080"
 components:
   schemas:
     data:
@@ -45,7 +51,9 @@ paths:
                     $ref: "#/components/schemas/data"
   /events:
     get:
-      description: Endpoint for Server-Sent Events (SSE)
+      description: |
+        Endpoint for Server-Sent Events (SSE). Sends the current data on connect and on every change.
+        When nothing changed for 15 seconds a comment line (": ping") is sent to detect closed clients.
       responses:
         "200":
           description: OK
@@ -71,7 +79,7 @@ paths:
     get:
       description: |
         Serve files from the plugin's template folder (obs_module_file("templates")).
-        Browser sources added by SETOLIA load http://127.0.0.1:8080/templates/<template name>/index.html.
+        Browser sources added by SETOLIA load http://127.0.0.1:<port>/templates/<template name>/index.html.
         Template names are percent-encoded. Responses include "Cache-Control: no-cache"
         so edits to template files are reflected on the next reload.
       parameters:

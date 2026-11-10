@@ -6,6 +6,7 @@
 #include "../source/http_sync_server.hpp"
 #include "../source/tagged_text_source_manager.hpp"
 #include "../config/config_manager.hpp"
+#include "../source/template_paths.hpp"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -18,6 +19,7 @@
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QTextEdit>
 #include <QTime>
 #include <QTimer>
@@ -302,8 +304,57 @@ void DockActions::notifyStateChanged()
 
 void DockActions::startStreaming()
 {
-	if (httpSyncServer) {
-		httpSyncServer->startServer();
+	startServer();
+}
+
+bool DockActions::startServer()
+{
+	if (!httpSyncServer) {
+		return false;
+	}
+	const int port = setolia::httpServerPort();
+	const bool running = httpSyncServer->startServer(port);
+	updateServerStatus(running, port);
+	return running;
+}
+
+void DockActions::updateServerStatus(bool running, int port)
+{
+	if (!viewParts.serverStatusLabel) {
+		return;
+	}
+	if (running) {
+		viewParts.serverStatusLabel->setText(
+			QString::fromUtf8(obs_module_text("SERVER_STATUS_RUNNING")).arg(port));
+		viewParts.serverStatusLabel->setStyleSheet(QString());
+	} else {
+		viewParts.serverStatusLabel->setText(
+			QString::fromUtf8(obs_module_text("SERVER_STATUS_PORT_UNAVAILABLE")).arg(port));
+		viewParts.serverStatusLabel->setStyleSheet("color: red;");
+	}
+}
+
+void DockActions::applyServerPort()
+{
+	if (!viewParts.serverPortSpinBox || !httpSyncServer) {
+		return;
+	}
+
+	const int port = viewParts.serverPortSpinBox->value();
+	if (!setolia::isValidHttpServerPort(port)) {
+		return;
+	}
+	const int previousPort = setolia::httpServerPort();
+	if (port == previousPort && httpSyncServer->isRunning()) {
+		return; // nothing to do
+	}
+
+	setolia::setHttpServerPort(port);
+	saveConfig();
+
+	// Rewrite existing template sources only once the new port actually serves them.
+	if (startServer() && templateManager) {
+		templateManager->migrateTemplateSources();
 	}
 }
 
@@ -324,6 +375,7 @@ Config DockActions::getConfigForSave() const
 	config.timestampToggled = viewParts.timestampToggle->isChecked();
 	config.nextToggled = viewParts.nextToggle->isChecked();
 	config.selectedTemplate = viewParts.templateComboBox->currentText();
+	config.port = setolia::httpServerPort(); // the applied port, not an unapplied spin box edit
 	return config;
 }
 
@@ -346,6 +398,10 @@ void DockActions::applyConfig(const Config &config)
 	// Restore toggles
 	viewParts.nextToggle->setChecked(config.nextToggled);
 	viewParts.timestampToggle->setChecked(config.timestampToggled);
+
+	// Restore server port (the server is started afterwards with this port)
+	setolia::setHttpServerPort(config.port);
+	viewParts.serverPortSpinBox->setValue(setolia::httpServerPort());
 
 	// Restore template selection
 	const int templateIndex = viewParts.templateComboBox->findText(config.selectedTemplate);
