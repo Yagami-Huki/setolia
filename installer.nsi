@@ -2,7 +2,7 @@
   !define PLUGIN_NAME "setolia"
 !endif
 !ifndef PLUGIN_VERSION
-  !define PLUGIN_VERSION "1.2.0"
+  !define PLUGIN_VERSION "1.3.0"
 !endif
 !ifndef CONFIG
   !define CONFIG "RelWithDebInfo"
@@ -85,6 +85,11 @@ Section "Install"
   SetOutPath "$INSTDIR\data\templates"
   SetOverwrite ifnewer
   File /r ".\data\templates\*"
+
+  ; OBS 32 以降のプラグインマネージャーが読むマニフェスト (CMake がビルドディレクトリに生成する)
+  SetOutPath "$INSTDIR\data"
+  SetOverwrite on
+  File ".\build_x64\manifest.json"
 
   SetOutPath "$INSTDIR"
   WriteUninstaller "$INSTDIR\uninstall-${PLUGIN_NAME}.exe"

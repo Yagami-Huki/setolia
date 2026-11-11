@@ -52,7 +52,8 @@ void SetoliaDockWidget::finalize()
 		return;
 	}
 	finalized = true;
-	actions->flushPendingSave();
+	actions->flushPendingSave(); // also stores the current hotkey bindings
+	actions->unregisterHotkeys();
 	actions->stopStreaming();
 	actions->stopClock();
 	actions->stopStreamingTimer();
@@ -241,6 +242,7 @@ void SetoliaDockWidget::bootstrap()
 	if (configManager->loadConfig(config)) {
 		actions->applyConfig(config);
 	}
+	actions->registerHotkeys(config.hotkeys);
 	actions->refreshState();
 	actions->startStreaming();
 	// OBS may already be streaming when the dock is created (e.g. streaming started before the plugin

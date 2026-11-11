@@ -28,6 +28,35 @@
 #include <QUrl>
 
 namespace {
+// Name of the hotkey and its key in Config::hotkeys.
+constexpr const char *kNextSongHotkeyName = "setolia.next_song";
+constexpr const char *kNextSongHotkeyConfigKey = "nextSong";
+
+// obs_data_array <-> JSON array, through a wrapper object (obs_data has no direct array (de)serialization).
+QJsonArray hotkeyArrayToJson(obs_data_array_t *array)
+{
+	if (!array) {
+		return {};
+	}
+	obs_data_t *wrapper = obs_data_create();
+	obs_data_set_array(wrapper, "bindings", array);
+	const QJsonDocument doc = QJsonDocument::fromJson(QByteArray(obs_data_get_json(wrapper)));
+	obs_data_release(wrapper);
+	return doc.object().value("bindings").toArray();
+}
+
+obs_data_array_t *hotkeyArrayFromJson(const QJsonArray &array)
+{
+	const QJsonObject wrapperObject{{"bindings", array}};
+	obs_data_t *wrapper = obs_data_create_from_json(QJsonDocument(wrapperObject).toJson().constData());
+	if (!wrapper) {
+		return nullptr;
+	}
+	obs_data_array_t *result = obs_data_get_array(wrapper, "bindings");
+	obs_data_release(wrapper);
+	return result;
+}
+
 // Delay of the debounced settings save.
 constexpr int kSaveDelayMs = 2000;
 // Refresh rate of the timestamp display. The value itself is computed from the stream start time.
@@ -121,60 +150,51 @@ void DockActions::updateTimestampDisplay()
 	}
 }
 
+bool DockActions::moveSingingToSetlist()
+{
+	const QString singingText = viewParts.singingText->text().trimmed();
+	if (singingText.isEmpty()) {
+		return false;
+	}
+	const QString currentSetlist = viewParts.setlistText->toPlainText();
+	if (!currentSetlist.isEmpty()) {
+		viewParts.setlistText->setPlainText(currentSetlist + "\n" + singingText);
+	} else {
+		viewParts.setlistText->setPlainText(singingText);
+	}
+	viewParts.singingText->clear();
+	return true;
+}
+
+void DockActions::takeNextFromReserve()
+{
+	QStringList reserveLines = viewParts.reserveText->toPlainText().split("\n", Qt::KeepEmptyParts);
+	if (reserveLines.isEmpty()) {
+		return;
+	}
+	QString topLine = reserveLines.first().trimmed();
+	if (topLine.isEmpty()) {
+		return;
+	}
+	if (viewParts.timestampToggle->isChecked()) {
+		topLine += " - " + currentTimestampText();
+	}
+	viewParts.singingText->setText(topLine);
+	reserveLines.removeFirst();
+	viewParts.reserveText->setPlainText(reserveLines.join("\n"));
+}
+
 void DockActions::nextSong()
 {
 	viewParts.reserveText->blockSignals(true);
 	viewParts.singingText->blockSignals(true);
 	viewParts.setlistText->blockSignals(true);
 
-	if (viewParts.nextToggle->isChecked()) {
-		const QString singingText = viewParts.singingText->text().trimmed();
-		if (!singingText.isEmpty()) {
-			const QString currentSetlist = viewParts.setlistText->toPlainText();
-			if (!currentSetlist.isEmpty()) {
-				viewParts.setlistText->setPlainText(currentSetlist + "\n" + singingText);
-			} else {
-				viewParts.setlistText->setPlainText(singingText);
-			}
-			viewParts.singingText->clear();
-		} else {
-			QStringList reserveLines = viewParts.reserveText->toPlainText().split("\n", Qt::KeepEmptyParts);
-			if (!reserveLines.isEmpty()) {
-				QString topLine = reserveLines.first().trimmed();
-				if (viewParts.timestampToggle->isChecked() && !topLine.isEmpty()) {
-					topLine += " - " + currentTimestampText();
-				}
-				if (!topLine.isEmpty()) {
-					viewParts.singingText->setText(topLine);
-					reserveLines.removeFirst();
-					viewParts.reserveText->setPlainText(reserveLines.join("\n"));
-				}
-			}
-		}
-	} else {
-		const QString singingText = viewParts.singingText->text().trimmed();
-		if (!singingText.isEmpty()) {
-			const QString currentSetlist = viewParts.setlistText->toPlainText();
-			if (!currentSetlist.isEmpty()) {
-				viewParts.setlistText->setPlainText(currentSetlist + "\n" + singingText);
-			} else {
-				viewParts.setlistText->setPlainText(singingText);
-			}
-			viewParts.singingText->clear();
-		}
-
-		QStringList reserveLines = viewParts.reserveText->toPlainText().split("\n", Qt::KeepEmptyParts);
-		if (!reserveLines.isEmpty()) {
-			QString topLine = reserveLines.first().trimmed();
-			if (viewParts.timestampToggle->isChecked() && !topLine.isEmpty()) {
-				topLine += " - " + currentTimestampText();
-			}
-			if (!topLine.isEmpty()) {
-				viewParts.singingText->setText(topLine);
-				reserveLines.removeFirst();
-				viewParts.reserveText->setPlainText(reserveLines.join("\n"));
-			}
-		}
+	// "Wait before moving on" (nextToggle): a press only finishes the current song; the next press takes the
+	// next one. Otherwise one press does both.
+	const bool finishedSong = moveSingingToSetlist();
+	if (!viewParts.nextToggle->isChecked() || !finishedSong) {
+		takeNextFromReserve();
 	}
 
 	viewParts.reserveText->blockSignals(false);
@@ -183,6 +203,57 @@ void DockActions::nextSong()
 
 	notifyStateChanged();
 	scheduleSave();
+}
+
+void DockActions::registerHotkeys(const QJsonObject &savedBindings)
+{
+	loadedHotkeyBindings = savedBindings;
+	if (nextSongHotkeyId != static_cast<size_t>(OBS_INVALID_HOTKEY_ID)) {
+		return;
+	}
+	nextSongHotkeyId = obs_hotkey_register_frontend(
+		kNextSongHotkeyName, obs_module_text("HOTKEY_NEXT_SONG"),
+		[](void *data, obs_hotkey_id, obs_hotkey_t *, bool pressed) {
+			if (!pressed) {
+				return;
+			}
+			// Called on the hotkey thread: run nextSong() on the UI thread, like POST /next.
+			auto *self = static_cast<DockActions *>(data);
+			QMetaObject::invokeMethod(
+				self->viewParts.nextButton, [self]() { self->nextSong(); }, Qt::QueuedConnection);
+		},
+		this);
+
+	const QJsonValue bindings = savedBindings.value(kNextSongHotkeyConfigKey);
+	if (bindings.isArray()) {
+		obs_data_array_t *array = hotkeyArrayFromJson(bindings.toArray());
+		if (array) {
+			obs_hotkey_load(nextSongHotkeyId, array);
+			obs_data_array_release(array);
+		}
+	}
+}
+
+void DockActions::unregisterHotkeys()
+{
+	if (nextSongHotkeyId == static_cast<size_t>(OBS_INVALID_HOTKEY_ID)) {
+		return;
+	}
+	loadedHotkeyBindings = hotkeyBindingsForSave();
+	obs_hotkey_unregister(nextSongHotkeyId);
+	nextSongHotkeyId = static_cast<size_t>(OBS_INVALID_HOTKEY_ID);
+}
+
+QJsonObject DockActions::hotkeyBindingsForSave() const
+{
+	if (nextSongHotkeyId == static_cast<size_t>(OBS_INVALID_HOTKEY_ID)) {
+		return loadedHotkeyBindings;
+	}
+	QJsonObject bindings = loadedHotkeyBindings;
+	obs_data_array_t *array = obs_hotkey_save(nextSongHotkeyId);
+	bindings[kNextSongHotkeyConfigKey] = hotkeyArrayToJson(array);
+	obs_data_array_release(array);
+	return bindings;
 }
 
 void DockActions::resetAll()
@@ -503,6 +574,7 @@ Config DockActions::getConfigForSave() const
 	config.selectedTemplate = viewParts.templateComboBox->currentText();
 	config.port = setolia::httpServerPort(); // the applied port, not an unapplied spin box edit
 	config.restrictNextOrigin = viewParts.restrictNextOriginToggle->isChecked();
+	config.hotkeys = hotkeyBindingsForSave();
 	return config;
 }
 
