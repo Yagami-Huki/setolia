@@ -46,6 +46,8 @@ target_sources(
     src/dock/view.hpp
     src/dock/action.cpp
     src/dock/action.hpp
+    src/dock/stream_session.cpp
+    src/dock/stream_session.hpp
     src/source/template_manager.cpp
     src/source/template_manager.hpp
     src/source/template_paths.cpp

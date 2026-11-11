@@ -11,6 +11,9 @@
 #include "../source/timestamp.hpp"
 
 #include <QCheckBox>
+#include <QDateTime>
+#include <QFile>
+#include <QSaveFile>
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QJsonArray>
@@ -55,6 +58,26 @@ obs_data_array_t *hotkeyArrayFromJson(const QJsonArray &array)
 	obs_data_array_t *result = obs_data_get_array(wrapper, "bindings");
 	obs_data_release(wrapper);
 	return result;
+}
+
+QString streamSessionFilePath()
+{
+	char *path = obs_module_config_path("stream-session.json");
+	if (!path) {
+		return QString();
+	}
+	const QString result = QString::fromUtf8(path);
+	bfree(path);
+	return result;
+}
+
+std::optional<setolia::StreamSession> readStreamSession()
+{
+	QFile file(streamSessionFilePath());
+	if (!file.open(QIODevice::ReadOnly)) {
+		return std::nullopt;
+	}
+	return setolia::streamSessionFromJson(file.readAll());
 }
 
 // Delay of the debounced settings save.
@@ -310,12 +333,32 @@ void DockActions::stopClock()
 
 void DockActions::startStreamingTimer(qint64 alreadyElapsedMs)
 {
+	const qint64 now = QDateTime::currentMSecsSinceEpoch();
 	streamOffsetMs = alreadyElapsedMs > 0 ? alreadyElapsedMs : 0;
 	streamClock.start();
+
+	// Remember the previous stream before this one overwrites the record, and offer to continue it if it
+	// stopped moments ago. Counting starts from 0 either way, as before, until the button is pressed.
+	previousSession = readStreamSession();
+	if (!setolia::canResumeStreamSession(previousSession, now)) {
+		previousSession.reset();
+	}
+	currentSession = {now - streamOffsetMs, now};
+	writeStreamSession();
+	if (viewParts.resumeTimestampButton) {
+		if (previousSession) {
+			const QString startTime =
+				QDateTime::fromMSecsSinceEpoch(previousSession->startMs).toString("HH:mm");
+			viewParts.resumeTimestampButton->setText(
+				QString::fromUtf8(obs_module_text("RESUME_TIMESTAMP_BUTTON")).arg(startTime));
+		}
+		viewParts.resumeTimestampButton->setVisible(previousSession.has_value());
+	}
+
 	updateTimestampDisplay();
 	QObject::disconnect(viewParts.timestampTimer, &QTimer::timeout, nullptr, nullptr);
 	QObject::connect(viewParts.timestampTimer, &QTimer::timeout, viewParts.timestampTimer,
-			 [this]() { updateTimestampDisplay(); });
+			 [this]() { onTimestampTick(); });
 	viewParts.timestampTimer->start(kTimestampRefreshMs);
 }
 
@@ -323,9 +366,63 @@ void DockActions::stopStreamingTimer()
 {
 	viewParts.timestampTimer->stop();
 	QObject::disconnect(viewParts.timestampTimer, &QTimer::timeout, nullptr, nullptr);
+	if (streamClock.isValid()) {
+		// Record when the stream stopped, so a restart within a minute can continue it.
+		currentSession.lastAliveMs = QDateTime::currentMSecsSinceEpoch();
+		writeStreamSession();
+	}
 	streamClock.invalidate();
 	streamOffsetMs = 0;
+	previousSession.reset();
+	if (viewParts.resumeTimestampButton) {
+		viewParts.resumeTimestampButton->setVisible(false);
+	}
 	viewParts.timestampDisplay->setText("0:00:00");
+}
+
+void DockActions::onTimestampTick()
+{
+	updateTimestampDisplay();
+	const qint64 now = QDateTime::currentMSecsSinceEpoch();
+	if (now - lastSessionWriteMs >= setolia::kStreamSessionHeartbeatMs) {
+		// Heartbeat: if OBS crashes, the last write tells when the stream was still running.
+		currentSession.lastAliveMs = now;
+		writeStreamSession();
+	}
+}
+
+void DockActions::writeStreamSession()
+{
+	lastSessionWriteMs = QDateTime::currentMSecsSinceEpoch();
+	const QString path = streamSessionFilePath();
+	if (path.isEmpty()) {
+		return;
+	}
+	QSaveFile file(path);
+	if (!file.open(QIODevice::WriteOnly) || file.write(setolia::streamSessionToJson(currentSession)) < 0 ||
+	    !file.commit()) {
+		blog(LOG_WARNING, "[SETOLIA] Failed to write the stream session file: %s", path.toUtf8().constData());
+	}
+}
+
+void DockActions::continueFromPreviousStream()
+{
+	if (!previousSession || !streamClock.isValid()) {
+		return;
+	}
+	const qint64 now = QDateTime::currentMSecsSinceEpoch();
+	streamOffsetMs = setolia::resumedStreamElapsedMs(*previousSession, now);
+	streamClock.start();
+	// This stream now continues the previous one; a further restart chains to the same start.
+	currentSession = {previousSession->startMs, now};
+	writeStreamSession();
+	blog(LOG_INFO, "[SETOLIA] Timestamp continues the previous stream (started %s)",
+	     QDateTime::fromMSecsSinceEpoch(previousSession->startMs).toString(Qt::ISODate).toUtf8().constData());
+	previousSession.reset();
+	if (viewParts.resumeTimestampButton) {
+		viewParts.resumeTimestampButton->setVisible(false);
+	}
+	updateTimestampDisplay();
 }
 
 void DockActions::prepareUserTemplates()
