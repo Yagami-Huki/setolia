@@ -85,6 +85,12 @@ endforeach()
 configure_file(src/source/builtin_templates.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/generated/builtin_templates.hpp" @ONLY)
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
+# Linux links shared modules with undefined symbols by default, so a missing definition only shows up when OBS
+# loads the plugin (Windows fails at link time). Make Linux builds fail at link time too.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_options(${CMAKE_PROJECT_NAME} PRIVATE "LINKER:--no-undefined")
+endif()
+
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE PLUGIN_VERSION="${CMAKE_PROJECT_VERSION}")
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})
