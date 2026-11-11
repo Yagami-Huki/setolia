@@ -11,7 +11,21 @@ Setlist plugin for OBS Studio
 - Shortcut button to [lyrics search site](https://utaten.com)
 - Button to add pre-configured browser source
 - Support custom template
-- Supports operation from Stream Deck
+- Supports operation from Stream Deck and hotkeys
+
+## What's new in 1.3.0
+
+Existing settings and scenes keep working after the update; no action is required.
+
+- Supports OBS 33 (both the new plugin layout and the layout of OBS 32 and earlier).
+- Templates are served by the plugin's HTTP server. Template browser sources added with earlier versions are converted automatically.
+- The HTTP server port can be changed in the dock. If the new port is in use, the server keeps running on the previous port.
+- Custom templates can be placed in the user template folder inside the OBS configuration folder. Custom templates that earlier versions kept in the bundled template folder are copied there automatically and survive uninstalling.
+- New option to reject next-song requests (`/next`) from web pages (off by default).
+- New "SETOLIA: Next Song" hotkey.
+- Settings are saved automatically after each edit, so recent edits survive an OBS crash.
+- Timestamps no longer drift during long streams, and they also run when OBS is already streaming at startup.
+- Name and version are shown in the plugin manager of OBS 32 and later.
 
 ## Installation
 
@@ -55,6 +69,12 @@ OBS 33 blocks requests to `127.0.0.1` from browser sources loaded as local files
 
 Template browser sources added with earlier versions are converted to the URL form automatically when OBS starts and when the scene collection changes, so you don't need to re-add your templates. Sources that still point at an old install location (`C:\Program Files\obs-studio\data\obs-plugins\setolia\templates\...`, or `<OBS>\data\obs-plugins\setolia\templates\...` of a portable OBS 32) are converted too, as long as a template with the same name exists.
 
+### Next song with a hotkey
+
+"SETOLIA: Next Song" is listed in OBS under Settings → Hotkeys. The assigned key does the same as the dock's "Next Song" button and `POST /next`. The binding is stored in the SETOLIA settings and restored on the next start.
+
+Stream Deck can trigger it too, by sending the assigned key with its standard "Hotkey" action. This does not use HTTP (`/next`), so it is also an alternative if you want to enable "Reject next-song requests from browsers (web pages)" below.
+
 ### Rejecting next-song requests from web pages (optional)
 
 `POST /next` (next song) has no authentication, so web pages opened in a browser can call it too. When "Reject next-song requests from browsers (web pages)" is enabled in the dock, `/next` is accepted only in the following cases and answered with `403` otherwise. It is disabled by default, which keeps the previous behavior.
@@ -62,7 +82,7 @@ Template browser sources added with earlier versions are converted to the URL fo
 - No `Origin` header (curl, most Stream Deck plugins)
 - `Origin` is `http://127.0.0.1:<port>` or `http://localhost:<port>`
 
-Some Stream Deck plugins send requests from an embedded browser with an `Origin` header; with the option enabled they can no longer switch songs. Whenever `/next` receives an `Origin` header, the OBS log shows `POST /next with Origin '...'` regardless of the setting (once per origin and session). Trigger a song change from your plugin and check the log before enabling the option.
+Some Stream Deck plugins send requests from an embedded browser with an `Origin` header; with the option enabled they can no longer switch songs (use the hotkey above instead). Whenever `/next` receives an `Origin` header, the OBS log shows `POST /next with Origin '...'` regardless of the setting (once per origin and session). Trigger a song change from your plugin and check the log before enabling the option.
 
 ### Changing the server port
 

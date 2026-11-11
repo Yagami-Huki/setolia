@@ -1,0 +1,13 @@
+{
+    "id": "setolia",
+    "name": "@SETOLIA_MANIFEST_NAME@",
+    "display_name": "@SETOLIA_MANIFEST_DISPLAY_NAME@",
+    "version": "@SETOLIA_MANIFEST_VERSION@",
+    "description": "Setlist plugin for OBS Studio: reserve list, now singing and set list with stream timestamps.",
+    "long_description": "SETOLIA adds a dock to manage the reserve list, the song being sung and the set list during a stream. It inserts timestamps synchronized with the stream time, shows them in OBS text sources and in browser-source templates served by a local HTTP server, and lets Stream Deck or a hotkey move on to the next song. / 配信中の予約リスト・歌唱中の曲・セットリストを管理するドックを追加します。配信時間に同期したタイムスタンプ、テキストソースとブラウザソース用テンプレートへの表示、Stream Deck やホットキーからの曲送りに対応しています。",
+    "urls": {
+        "repository": "https://github.com/Yagami-Huki/setolia",
+        "website": "https://logicbox.booth.pm/items/7541386",
+        "support": "https://github.com/Yagami-Huki/setolia/issues"
+    }
+}

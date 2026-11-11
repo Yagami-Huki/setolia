@@ -4,8 +4,9 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/common/bootstrap.cmake" NO_POLICY_SCO
 
 project(${_name} VERSION ${_version})
 
-option(ENABLE_FRONTEND_API "Use obs-frontend-api for UI functionality" OFF)
-option(ENABLE_QT "Use Qt functionality" OFF)
+# Both are required by SETOLIA (dock, frontend events); ON matches CMakePresets.json.
+option(ENABLE_FRONTEND_API "Use obs-frontend-api for UI functionality" ON)
+option(ENABLE_QT "Use Qt functionality" ON)
 option(ENABLE_TESTS "Build OBS-independent unit tests (run with ctest)" OFF)
 
 include(compilerconfig)
@@ -85,6 +86,14 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_BINARY
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE PLUGIN_VERSION="${CMAKE_PROJECT_VERSION}")
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})
+
+# Plugin manifest read by the OBS 32+ plugin manager (<data>/manifest.json; ignored by older OBS).
+# Generated so its version always matches buildspec.json.
+string(JSON SETOLIA_MANIFEST_DISPLAY_NAME GET ${buildspec} displayName)
+set(SETOLIA_MANIFEST_NAME "${_name}")
+set(SETOLIA_MANIFEST_VERSION "${_version}")
+configure_file(cmake/common/manifest.json.in "${CMAKE_CURRENT_BINARY_DIR}/manifest.json" @ONLY)
+target_add_resource(${CMAKE_PROJECT_NAME} "${CMAKE_CURRENT_BINARY_DIR}/manifest.json")
 
 if(ENABLE_TESTS)
   enable_testing()

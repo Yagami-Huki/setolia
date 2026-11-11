@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QElapsedTimer>
+#include <QJsonObject>
 #include <QString>
 #include <memory>
 #include <string>
@@ -18,6 +19,11 @@ public:
 	~DockActions();
 
 	void nextSong();
+
+	// "SETOLIA: Next Song" frontend hotkey. Registered after the config is loaded (bindings come from it) and
+	// unregistered on exit.
+	void registerHotkeys(const QJsonObject &savedBindings);
+	void unregisterHotkeys();
 	void resetAll();
 	void lyricSearch() const;
 
@@ -62,6 +68,11 @@ public:
 
 private:
 	void notifyStateChanged();
+	// nextSong() steps: move "now singing" to the set list / take the next song from the reserve list.
+	bool moveSingingToSetlist();
+	void takeNextFromReserve();
+	// Current hotkey bindings for saving (the loaded ones while the hotkey is not registered).
+	QJsonObject hotkeyBindingsForSave() const;
 	bool startServer();
 	void updateServerStatus(bool running, int port);
 	Config getConfigForSave() const;
@@ -79,5 +90,7 @@ private:
 	qint64 streamOffsetMs = 0;
 	bool autosaveEnabled = false;
 	bool active = true;
+	size_t nextSongHotkeyId = static_cast<size_t>(-1); // OBS_INVALID_HOTKEY_ID
+	QJsonObject loadedHotkeyBindings;
 	std::string cachedData;
 };

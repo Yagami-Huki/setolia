@@ -14,6 +14,16 @@ OBS_DECLARE_MODULE();
 OBS_MODULE_AUTHOR("Yagami Huki");
 OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US");
 
+MODULE_EXPORT const char *obs_module_name(void)
+{
+	return obs_module_text("PLUGIN_DISPLAY_NAME");
+}
+
+MODULE_EXPORT const char *obs_module_description(void)
+{
+	return obs_module_text("PLUGIN_DESCRIPTION");
+}
+
 SETOLIA_Dock::SETOLIA_Dock(QWidget *parent) : SetoliaDockWidget(parent) {}
 
 void SETOLIA_Dock::StartTimer()

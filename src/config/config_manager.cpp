@@ -89,6 +89,7 @@ bool ConfigManager::loadConfig(Config &config) const
 	config.selectedTemplate = jsonObj.value("template").toString("");
 	config.port = jsonObj.value("port").toInt(setolia::kDefaultHttpServerPort);
 	config.restrictNextOrigin = jsonObj.value("restrictNextOrigin").toBool(false);
+	config.hotkeys = jsonObj.value("hotkeys").toObject();
 	if (!setolia::isValidHttpServerPort(config.port)) {
 		blog(LOG_WARNING, "ConfigManager: Invalid port %d in config, using %d", config.port,
 		     setolia::kDefaultHttpServerPort);
@@ -126,6 +127,7 @@ bool ConfigManager::saveConfig(const Config &config) const
 	jsonObj["template"] = config.selectedTemplate;
 	jsonObj["port"] = config.port;
 	jsonObj["restrictNextOrigin"] = config.restrictNextOrigin;
+	jsonObj["hotkeys"] = config.hotkeys;
 
 	const QJsonDocument jsonDoc(jsonObj);
 

@@ -2,6 +2,7 @@
 
 #include "../source/template_paths.hpp"
 
+#include <QJsonObject>
 #include <QString>
 #include <memory>
 
@@ -25,6 +26,9 @@ public:
 
 	// Reject POST /next from web pages (requests with a foreign Origin header). Off by default.
 	bool restrictNextOrigin = false;
+
+	// Hotkey bindings as saved by obs_hotkey_save, keyed by hotkey name (e.g. "nextSong": [...]).
+	QJsonObject hotkeys;
 };
 
 class ConfigManager {
