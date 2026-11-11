@@ -24,3 +24,22 @@ add_executable(
 )
 target_link_libraries(template_paths_test PRIVATE Qt6::Core)
 add_test(NAME template_paths_test COMMAND template_paths_test)
+
+add_executable(
+  timestamp_test
+  timestamp_test.cpp
+  test_support.hpp
+  ../src/source/timestamp.cpp
+  ../src/source/timestamp.hpp
+)
+target_link_libraries(timestamp_test PRIVATE Qt6::Core)
+add_test(NAME timestamp_test COMMAND timestamp_test)
+
+add_executable(
+  next_request_policy_test
+  next_request_policy_test.cpp
+  test_support.hpp
+  ../src/source/next_request_policy.cpp
+  ../src/source/next_request_policy.hpp
+)
+add_test(NAME next_request_policy_test COMMAND next_request_policy_test)

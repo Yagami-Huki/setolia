@@ -22,6 +22,9 @@ public:
 
 	// HTTP server port (setolia::kMinHttpServerPort..kMaxHttpServerPort)
 	int port = setolia::kDefaultHttpServerPort;
+
+	// Reject POST /next from web pages (requests with a foreign Origin header). Off by default.
+	bool restrictNextOrigin = false;
 };
 
 class ConfigManager {

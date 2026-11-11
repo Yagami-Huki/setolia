@@ -1,13 +1,14 @@
 #include "setolia_text_sources.hpp"
 #include "tagged_text_source_manager.hpp"
+#include "timestamp.hpp"
 
 #include <obs-module.h>
 
 #include <QString>
-#include <QRegularExpression>
 #include <QStringList>
 #include <QUuid>
-#include <memory>
+
+#include <cstring>
 
 namespace {
 constexpr const char *kTagSettingKey = "setolia_tag";
@@ -28,6 +29,32 @@ constexpr SetoliaTextSourceDescriptor kDescriptors[] = {
 	{"setolia_setlist_text_source", "SETLIST_TEXT_SOURCE_NAME", TaggedTextSourceManager::TextState::Setlist},
 };
 
+// Each SETOLIA text source type is registered in two versions (same id, OBS stores the versioned id):
+//  - v1 (version 0, id "<id>"): wraps the v1 OBS text sources ("text_gdiplus" / "text_ft2_source"), which OBS
+//    itself marks obsolete. Hidden from the "Add Source" menu (OBS_SOURCE_CAP_OBSOLETE) but still used to load
+//    sources saved by 1.2.x and earlier, so their look does not change.
+//  - v2 (version 2, id "<id>_v2"): wraps the current OBS text sources ("text_gdiplus_v3" /
+//    "text_ft2_source_v2"). New sources use this version.
+struct SetoliaTextSourceVersion {
+	const SetoliaTextSourceDescriptor *descriptor;
+	uint32_t version;
+	const char *wrappedSourceId;
+};
+
+#if defined(_WIN32)
+constexpr const char *kWrappedSourceIdV1 = "text_gdiplus";
+constexpr const char *kWrappedSourceIdV2 = "text_gdiplus_v3";
+#else
+constexpr const char *kWrappedSourceIdV1 = "text_ft2_source";
+constexpr const char *kWrappedSourceIdV2 = "text_ft2_source_v2";
+#endif
+
+constexpr SetoliaTextSourceVersion kVersions[] = {
+	{&kDescriptors[0], 0, kWrappedSourceIdV1}, {&kDescriptors[0], 2, kWrappedSourceIdV2},
+	{&kDescriptors[1], 0, kWrappedSourceIdV1}, {&kDescriptors[1], 2, kWrappedSourceIdV2},
+	{&kDescriptors[2], 0, kWrappedSourceIdV1}, {&kDescriptors[2], 2, kWrappedSourceIdV2},
+};
+
 struct SetoliaTextSourceData {
 	obs_source_t *wrappedSource = nullptr;
 	TaggedTextSourceManager::TextState state = TaggedTextSourceManager::TextState::Reserve;
@@ -36,14 +63,7 @@ struct SetoliaTextSourceData {
 
 QString stripTimestampFromLine(const QString &line)
 {
-	static const QRegularExpression kTimestampSuffixRegex(R"(^\s*(.*?)\s+-\s*([0-9]{1,2}:[0-9]{2}:[0-9]{2})\s*$)");
-
-	const QRegularExpressionMatch match = kTimestampSuffixRegex.match(line);
-	if (!match.hasMatch()) {
-		return line;
-	}
-
-	return match.captured(1).trimmed();
+	return setolia::splitTimestampSuffix(line).title;
 }
 
 QString displayTextForSettings(obs_data_t *settings, bool songTitleOnly)
@@ -77,43 +97,28 @@ QString displayTextFromRawText(const QString &rawText, bool songTitleOnly)
 	return lines.join("\n");
 }
 
-const SetoliaTextSourceDescriptor *descriptorById(const char *sourceId)
-{
-	if (!sourceId) {
-		return nullptr;
-	}
-
-	for (const auto &descriptor : kDescriptors) {
-		if (QString::fromUtf8(descriptor.sourceId) == QString::fromUtf8(sourceId)) {
-			return &descriptor;
-		}
-	}
-
-	return nullptr;
-}
-
-const SetoliaTextSourceDescriptor *descriptorFromSource(obs_source_t *source)
+const SetoliaTextSourceVersion *versionFromSource(obs_source_t *source)
 {
 	if (!source) {
 		return nullptr;
 	}
-
-	return descriptorById(obs_source_get_id(source));
+	return static_cast<const SetoliaTextSourceVersion *>(obs_source_get_type_data(source));
 }
 
 const char *setolia_text_source_get_name(void *typeData)
 {
-	auto *descriptor = static_cast<const SetoliaTextSourceDescriptor *>(typeData);
-	if (!descriptor) {
+	auto *version = static_cast<const SetoliaTextSourceVersion *>(typeData);
+	if (!version) {
 		return obs_module_text("SETOLIA_TEXT_SOURCE_NAME");
 	}
-	return obs_module_text(descriptor->displayNameKey);
+	return obs_module_text(version->descriptor->displayNameKey);
 }
 
 void *setolia_text_source_create(obs_data_t *settings, obs_source_t *source)
 {
 	auto *data = new SetoliaTextSourceData();
-	const auto *descriptor = descriptorFromSource(source);
+	const auto *version = versionFromSource(source);
+	const auto *descriptor = version ? version->descriptor : nullptr;
 	if (descriptor) {
 		data->state = descriptor->state;
 	}
@@ -143,7 +148,7 @@ void *setolia_text_source_create(obs_data_t *settings, obs_source_t *source)
 		obs_data_set_string(settings, kTextSettingKey, displayText.toUtf8().constData());
 	}
 
-	const char *wrappedSourceId = TaggedTextSourceManager::sourceIdForCurrentPlatform();
+	const char *wrappedSourceId = version->wrappedSourceId;
 	const char *sourceName = obs_source_get_name(source);
 
 	data->wrappedSource = obs_source_create_private(wrappedSourceId, sourceName, settings);
@@ -271,11 +276,15 @@ uint32_t setolia_text_source_get_height(void *dataPtr)
 
 void register_setolia_text_sources()
 {
-	for (const auto &descriptor : kDescriptors) {
+	for (const auto &version : kVersions) {
 		struct obs_source_info sourceInfo = {};
-		sourceInfo.id = descriptor.sourceId;
+		sourceInfo.id = version.descriptor->sourceId;
+		sourceInfo.version = version.version;
 		sourceInfo.type = OBS_SOURCE_TYPE_INPUT;
 		sourceInfo.output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_CUSTOM_DRAW;
+		if (version.version == 0) {
+			sourceInfo.output_flags |= OBS_SOURCE_CAP_OBSOLETE;
+		}
 		sourceInfo.get_name = setolia_text_source_get_name;
 		sourceInfo.create = setolia_text_source_create;
 		sourceInfo.destroy = setolia_text_source_destroy;
@@ -287,7 +296,20 @@ void register_setolia_text_sources()
 		sourceInfo.get_height = setolia_text_source_get_height;
 		sourceInfo.enum_active_sources = nullptr;
 		sourceInfo.icon_type = OBS_ICON_TYPE_TEXT;
-		sourceInfo.type_data = const_cast<SetoliaTextSourceDescriptor *>(&descriptor);
+		sourceInfo.type_data = const_cast<SetoliaTextSourceVersion *>(&version);
 		obs_register_source(&sourceInfo);
 	}
+}
+
+bool is_setolia_text_source_id(const char *unversionedId)
+{
+	if (!unversionedId) {
+		return false;
+	}
+	for (const auto &descriptor : kDescriptors) {
+		if (strcmp(descriptor.sourceId, unversionedId) == 0) {
+			return true;
+		}
+	}
+	return false;
 }

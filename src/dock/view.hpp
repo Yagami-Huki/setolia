@@ -43,6 +43,10 @@ struct DockViewParts {
 	QLabel *serverStatusLabel = nullptr;
 	QSpinBox *serverPortSpinBox = nullptr;
 	QPushButton *applyServerPortButton = nullptr;
+	QCheckBox *restrictNextOriginToggle = nullptr;
+
+	// Debounced settings save
+	QTimer *saveTimer = nullptr;
 
 	// Lyric Search
 	QLineEdit *lyricSearchText = nullptr;

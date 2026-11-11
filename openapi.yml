@@ -66,7 +66,23 @@ paths:
                     $ref: "#/components/schemas/data"
   /next:
     post:
-      description: Switch to the next song
+      description: |
+        Switch to the next song.
+
+        Origin restriction (dock option "Reject next-song requests from browsers (web pages)", stored as
+        restrictNextOrigin in setolia-config.json, default off):
+          - Off (default): every request is accepted and the response has "Access-Control-Allow-Origin: *".
+          - On: the request is accepted only if it has no Origin header (curl, most Stream Deck plugins) or
+            its Origin is http://127.0.0.1:<port> or http://localhost:<port>. Other requests get 403.
+            "Access-Control-Allow-Origin" is not sent.
+        Requests with an Origin header are logged once per origin and OBS session in either mode.
+      parameters:
+        - name: Origin
+          in: header
+          required: false
+          schema:
+            type: string
+          example: http://127.0.0.1:8080
       responses:
         "200":
           description: OK
@@ -75,6 +91,15 @@ paths:
               schema:
                 type: string
                 example: OK
+        "403":
+          description: Rejected by the origin restriction (only when the restriction is enabled)
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: Forbidden
+        "413":
+          description: Request body larger than 1024 bytes
   /templates/{path}:
     get:
       description: |

@@ -1,5 +1,6 @@
 #include "action.hpp"
 
+#include <obs-frontend-api.h>
 #include <obs-module.h>
 
 #include "../source/template_manager.hpp"
@@ -7,6 +8,7 @@
 #include "../source/tagged_text_source_manager.hpp"
 #include "../config/config_manager.hpp"
 #include "../source/template_paths.hpp"
+#include "../source/timestamp.hpp"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -25,18 +27,39 @@
 #include <QTimer>
 #include <QUrl>
 
-#include <regex>
-
 namespace {
+// Delay of the debounced settings save.
+constexpr int kSaveDelayMs = 2000;
+// Refresh rate of the timestamp display. The value itself is computed from the stream start time.
+constexpr int kTimestampRefreshMs = 250;
+
 QStringList splitTimestamp(const QString &text)
 {
-	const std::string input = text.toStdString();
-	const std::regex re(R"(^(.*) - (\d{1,2}:\d{2}:\d{2})$)");
-	std::smatch matches;
-	if (std::regex_match(input, matches, re)) {
-		return QStringList({QString::fromStdString(matches[1]), QString::fromStdString(matches[2])});
+	const setolia::TimestampSplit split = setolia::splitTimestampSuffix(text);
+	if (split.timestamp) {
+		return QStringList({split.title, *split.timestamp});
 	}
 	return QStringList({text});
+}
+
+// How long the current stream has been running according to the streaming output, or -1 if unknown.
+// Used when the dock is created while OBS is already streaming. The output's frame count times the video frame
+// interval gives the stream time without depending on when the plugin was loaded.
+qint64 streamingOutputElapsedMs()
+{
+	obs_output_t *output = obs_frontend_get_streaming_output();
+	if (!output) {
+		return -1;
+	}
+	qint64 elapsedMs = -1;
+	const int frames = obs_output_get_total_frames(output);
+	video_t *video = obs_output_video(output);
+	const uint64_t frameTimeNs = video ? video_output_get_frame_time(video) : 0;
+	if (frames > 0 && frameTimeNs > 0) {
+		elapsedMs = static_cast<qint64>(static_cast<uint64_t>(frames) * frameTimeNs / 1000000ULL);
+	}
+	obs_output_release(output);
+	return elapsedMs;
 }
 
 std::string buildCachedData(const DockViewParts &viewParts)
@@ -82,6 +105,22 @@ DockActions::~DockActions()
 	}
 }
 
+QString DockActions::currentTimestampText() const
+{
+	if (!streamClock.isValid()) {
+		return viewParts.timestampDisplay->text();
+	}
+	return setolia::formatElapsedTimestamp((streamClock.elapsed() + streamOffsetMs) / 1000);
+}
+
+void DockActions::updateTimestampDisplay()
+{
+	const QString text = currentTimestampText();
+	if (viewParts.timestampDisplay->text() != text) {
+		viewParts.timestampDisplay->setText(text);
+	}
+}
+
 void DockActions::nextSong()
 {
 	viewParts.reserveText->blockSignals(true);
@@ -103,7 +142,7 @@ void DockActions::nextSong()
 			if (!reserveLines.isEmpty()) {
 				QString topLine = reserveLines.first().trimmed();
 				if (viewParts.timestampToggle->isChecked() && !topLine.isEmpty()) {
-					topLine += " - " + viewParts.timestampDisplay->text();
+					topLine += " - " + currentTimestampText();
 				}
 				if (!topLine.isEmpty()) {
 					viewParts.singingText->setText(topLine);
@@ -128,7 +167,7 @@ void DockActions::nextSong()
 		if (!reserveLines.isEmpty()) {
 			QString topLine = reserveLines.first().trimmed();
 			if (viewParts.timestampToggle->isChecked() && !topLine.isEmpty()) {
-				topLine += " - " + viewParts.timestampDisplay->text();
+				topLine += " - " + currentTimestampText();
 			}
 			if (!topLine.isEmpty()) {
 				viewParts.singingText->setText(topLine);
@@ -143,6 +182,7 @@ void DockActions::nextSong()
 	viewParts.setlistText->blockSignals(false);
 
 	notifyStateChanged();
+	scheduleSave();
 }
 
 void DockActions::resetAll()
@@ -168,6 +208,7 @@ void DockActions::resetAll()
 	viewParts.setlistText->blockSignals(false);
 
 	notifyStateChanged();
+	scheduleSave();
 }
 
 void DockActions::lyricSearch() const
@@ -196,29 +237,23 @@ void DockActions::stopClock()
 	QObject::disconnect(viewParts.clockTimer, &QTimer::timeout, nullptr, nullptr);
 }
 
-void DockActions::startStreamingTimer()
+void DockActions::startStreamingTimer(qint64 alreadyElapsedMs)
 {
-	timestampCount = 0;
-	viewParts.timestampDisplay->setText("0:00:00");
+	streamOffsetMs = alreadyElapsedMs > 0 ? alreadyElapsedMs : 0;
+	streamClock.start();
+	updateTimestampDisplay();
 	QObject::disconnect(viewParts.timestampTimer, &QTimer::timeout, nullptr, nullptr);
-	QObject::connect(viewParts.timestampTimer, &QTimer::timeout, viewParts.timestampTimer, [this]() {
-		timestampCount++;
-		const int hours = timestampCount / 3600;
-		const int minutes = (timestampCount % 3600) / 60;
-		const int seconds = timestampCount % 60;
-		viewParts.timestampDisplay->setText(QString("%1:%2:%3")
-							    .arg(hours, 2, 10)
-							    .arg(minutes, 2, 10, QChar('0'))
-							    .arg(seconds, 2, 10, QChar('0')));
-	});
-	viewParts.timestampTimer->start(1000);
+	QObject::connect(viewParts.timestampTimer, &QTimer::timeout, viewParts.timestampTimer,
+			 [this]() { updateTimestampDisplay(); });
+	viewParts.timestampTimer->start(kTimestampRefreshMs);
 }
 
 void DockActions::stopStreamingTimer()
 {
 	viewParts.timestampTimer->stop();
 	QObject::disconnect(viewParts.timestampTimer, &QTimer::timeout, nullptr, nullptr);
-	timestampCount = 0;
+	streamClock.invalidate();
+	streamOffsetMs = 0;
 	viewParts.timestampDisplay->setText("0:00:00");
 }
 
@@ -227,6 +262,19 @@ void DockActions::prepareUserTemplates()
 	if (templateManager) {
 		templateManager->prepareUserTemplateDirectory();
 	}
+}
+
+void DockActions::resumeStreamingTimerIfActive()
+{
+	if (streamClock.isValid() || !obs_frontend_streaming_active()) {
+		return;
+	}
+	// Prefer the stream time reported by the streaming output. If it cannot be determined (no output yet,
+	// no frames), count from now instead.
+	const qint64 elapsedMs = streamingOutputElapsedMs();
+	blog(LOG_INFO, "[SETOLIA] Already streaming; timestamp starts at %s",
+	     elapsedMs >= 0 ? "the streaming output's elapsed time" : "0 (stream time unknown)");
+	startStreamingTimer(elapsedMs);
 }
 
 void DockActions::reloadTemplates()
@@ -272,10 +320,42 @@ void DockActions::addSelectedTemplateToScene()
 void DockActions::onTextStateChanged()
 {
 	notifyStateChanged();
+	scheduleSave();
+}
+
+void DockActions::refreshState()
+{
+	notifyStateChanged();
+}
+
+void DockActions::onRestrictNextOriginChanged(bool checked)
+{
+	if (httpSyncServer) {
+		httpSyncServer->setRestrictNextOrigin(checked);
+	}
+	scheduleSave();
+}
+
+void DockActions::scheduleSave()
+{
+	if (!autosaveEnabled || !viewParts.saveTimer) {
+		return;
+	}
+	viewParts.saveTimer->start(kSaveDelayMs); // restarting extends the delay while edits keep coming
+}
+
+void DockActions::flushPendingSave()
+{
+	if (viewParts.saveTimer) {
+		viewParts.saveTimer->stop();
+	}
+	// Always save on exit, like earlier versions did, even if no edit is pending.
+	saveConfig();
 }
 
 void DockActions::onClockTogglechanged(bool checked)
 {
+	scheduleSave();
 	if (checked) {
 		startClock();
 		viewParts.clockLabel->setVisible(true);
@@ -292,8 +372,20 @@ const std::string &DockActions::cacheData() const
 	return cachedData;
 }
 
+void DockActions::deactivate()
+{
+	active = false;
+	autosaveEnabled = false;
+	if (viewParts.saveTimer) {
+		viewParts.saveTimer->stop();
+	}
+}
+
 void DockActions::notifyStateChanged()
 {
+	if (!active) {
+		return;
+	}
 	cachedData = buildCachedData(viewParts);
 	TaggedTextSourceManager::setCurrentText(TaggedTextSourceManager::TextState::Reserve,
 						viewParts.reserveText->toPlainText());
@@ -410,6 +502,7 @@ Config DockActions::getConfigForSave() const
 	config.nextToggled = viewParts.nextToggle->isChecked();
 	config.selectedTemplate = viewParts.templateComboBox->currentText();
 	config.port = setolia::httpServerPort(); // the applied port, not an unapplied spin box edit
+	config.restrictNextOrigin = viewParts.restrictNextOriginToggle->isChecked();
 	return config;
 }
 
@@ -436,6 +529,14 @@ void DockActions::applyConfig(const Config &config)
 	// Restore server port (the server is started afterwards with this port)
 	setolia::setHttpServerPort(config.port);
 	viewParts.serverPortSpinBox->setValue(setolia::httpServerPort());
+
+	// Restore the /next restriction (applied to the server, which reads it per request)
+	viewParts.restrictNextOriginToggle->blockSignals(true);
+	viewParts.restrictNextOriginToggle->setChecked(config.restrictNextOrigin);
+	viewParts.restrictNextOriginToggle->blockSignals(false);
+	if (httpSyncServer) {
+		httpSyncServer->setRestrictNextOrigin(config.restrictNextOrigin);
+	}
 
 	// Restore template selection
 	const int templateIndex = viewParts.templateComboBox->findText(config.selectedTemplate);
