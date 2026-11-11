@@ -25,7 +25,7 @@ Existing settings and scenes keep working after the update; no action is require
 - New "SETOLIA: Next Song" hotkey.
 - Settings are saved automatically after each edit, so recent edits survive an OBS crash.
 - Timestamps no longer drift during long streams, and they also run when OBS is already streaming at startup.
-- Name, version and description are shown in the plugin manager of OBS 32 and later.
+- Name and version are shown in the plugin manager of OBS 32 and later.
 
 ## Installation
 
