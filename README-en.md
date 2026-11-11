@@ -24,9 +24,22 @@ Existing settings and scenes keep working after the update; no action is require
 - New option to reject next-song requests (`/next`) from web pages (off by default).
 - New "SETOLIA: Next Song" hotkey.
 - Settings are saved automatically after each edit, so recent edits survive an OBS crash.
-- Timestamps no longer drift during long streams, and they also run when OBS is already streaming at startup.
+- Timestamps no longer drift during long streams.
 - When you restart OBS and resume the same broadcast, the timestamp can continue from the previous stream ("Continue from the previous stream" button).
 - Name and version are shown in the plugin manager of OBS 32 and later.
+
+### Visible changes
+
+- With timestamps enabled, template timestamps are now displayed as the templates were designed. Previously, during the first 10 hours of a stream, "title - timestamp" was shown as one string in the title field.
+  - `dark`, `light`, `simple` and templates ending in `-r` or `-rs`: the timestamp is shown separately from the title, in its own smaller style.
+  - Templates ending in `-t`, `-rt` or `-rst`: only the title is shown.
+  - Text sources already showed the title only with their default settings (unchanged).
+- Newly added SETOLIA text sources use OBS's current text sources, so their defaults match OBS's new text sources (for example a larger default font size of 256). Existing text sources look the same as before.
+
+### Notes
+
+- Text sources added with 1.3.0 are not loaded if you go back to 1.2 or earlier (existing text sources and settings keep working).
+- Custom templates kept in the bundled template folder are copied to the user template folder the first time OBS starts with 1.3.0. If you uninstall without starting OBS once after the update, they are removed without being copied.
 
 ## Installation
 
