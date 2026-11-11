@@ -61,6 +61,23 @@ target_sources(
     src/config/config_manager.hpp
 )
 
+# Names of the bundled templates, used to find custom templates that older versions kept in the bundled folder.
+file(
+  GLOB _setolia_template_entries
+  LIST_DIRECTORIES true
+  CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/data/templates/*"
+)
+set(SETOLIA_BUILTIN_TEMPLATE_NAMES "")
+foreach(_entry IN LISTS _setolia_template_entries)
+  if(IS_DIRECTORY "${_entry}")
+    cmake_path(GET _entry FILENAME _template_name)
+    string(APPEND SETOLIA_BUILTIN_TEMPLATE_NAMES "\t\"${_template_name}\",\n")
+  endif()
+endforeach()
+configure_file(src/source/builtin_templates.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/generated/builtin_templates.hpp" @ONLY)
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE PLUGIN_VERSION="${CMAKE_PROJECT_VERSION}")
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})

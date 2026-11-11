@@ -24,8 +24,14 @@ public:
 	// Binds 127.0.0.1:<port> synchronously and, on success, serves on a background thread.
 	// Returns false if the port could not be bound (e.g. already in use) or the server is already running.
 	bool startServer(int port);
+	// Moves a running server to another port without a gap in which neither port is served: the new port is
+	// bound first and the old server is stopped only if that succeeded. On failure the old server keeps
+	// running untouched and false is returned. Works like startServer() when no server is running.
+	bool switchPort(int port);
 	void stopServer();
 	bool isRunning() const;
+	// Port the running server is bound to (0 when stopped).
+	int port() const { return isRunning() ? boundPort : 0; }
 
 	// Data synchronization
 	void updateCachedData(const std::string &newData);
@@ -38,7 +44,11 @@ public:
 	void setNextSongCallback(std::function<void()> callback) { onNextSongRequested = std::move(callback); }
 
 private:
-	void setupRoutes();
+	// Creates a server with all routes and binds it to 127.0.0.1:<port>. Returns nullptr if the bind fails.
+	std::unique_ptr<httplib::Server> createBoundServer(int port);
+	// Takes ownership of a bound server and serves it on srv_thread. No server may be running.
+	void launch(std::unique_ptr<httplib::Server> server, int port);
+	void setupRoutes(httplib::Server &server);
 
 	// Streams latestData to one /ws or /events client until the server stops or a write fails.
 	// `encode` turns a data payload into the bytes to send; `keepAlive` is sent when nothing changed
@@ -48,6 +58,7 @@ private:
 
 	std::unique_ptr<httplib::Server> srv;
 	std::thread srv_thread;
+	int boundPort = 0;
 
 	// Synchronization primitives
 	mutable std::mutex srv_mutex; // guards latestData / dataVersion; never held while writing to a socket

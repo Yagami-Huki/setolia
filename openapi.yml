@@ -78,7 +78,13 @@ paths:
   /templates/{path}:
     get:
       description: |
-        Serve files from the plugin's template folder (obs_module_file("templates")).
+        Serve files from the template folders. Two folders are mounted on /templates and searched in this
+        order, file by file:
+          1. The user template folder (obs_module_config_path("templates"), e.g.
+             %APPDATA%\obs-studio\plugin_config\setolia\templates). Custom templates go here; it is kept
+             when the plugin is uninstalled or updated.
+          2. The bundled template folder (obs_module_file("templates")).
+        A user template with the same name as a bundled template therefore takes precedence.
         Browser sources added by SETOLIA load http://127.0.0.1:<port>/templates/<template name>/index.html.
         Template names are percent-encoded. Responses include "Cache-Control: no-cache"
         so edits to template files are reflected on the next reload.
@@ -86,7 +92,7 @@ paths:
         - name: path
           in: path
           required: true
-          description: Path relative to the template folder, e.g. light/index.html
+          description: Path relative to the template folders, e.g. light/index.html
           schema:
             type: string
           example: light/index.html

@@ -222,6 +222,13 @@ void DockActions::stopStreamingTimer()
 	viewParts.timestampDisplay->setText("0:00:00");
 }
 
+void DockActions::prepareUserTemplates()
+{
+	if (templateManager) {
+		templateManager->prepareUserTemplateDirectory();
+	}
+}
+
 void DockActions::reloadTemplates()
 {
 	if (!viewParts.templateComboBox || !templateManager) {
@@ -230,7 +237,12 @@ void DockActions::reloadTemplates()
 
 	const QString current = viewParts.templateComboBox->currentText();
 	viewParts.templateComboBox->clear();
-	const QStringList names = templateManager->listTemplateNames();
+	QStringList overridden;
+	const QStringList names = templateManager->listTemplateNames(&overridden);
+	for (const QString &name : overridden) {
+		blog(LOG_INFO, "[SETOLIA] User template '%s' overrides the bundled template of the same name",
+		     name.toUtf8().constData());
+	}
 	viewParts.templateComboBox->addItems(names);
 
 	if (!current.isEmpty()) {
@@ -345,16 +357,38 @@ void DockActions::applyServerPort()
 		return;
 	}
 	const int previousPort = setolia::httpServerPort();
-	if (port == previousPort && httpSyncServer->isRunning()) {
+	const bool wasRunning = httpSyncServer->isRunning();
+	if (port == previousPort && wasRunning) {
 		return; // nothing to do
 	}
 
-	setolia::setHttpServerPort(port);
-	saveConfig();
+	// The new port is bound before the running server is stopped, so a port in use leaves the server
+	// running on the previous port. The port is committed (and saved) only after the new server is up.
+	const bool started = (port == previousPort) ? httpSyncServer->startServer(port)
+						    : httpSyncServer->switchPort(port);
+	if (started) {
+		setolia::setHttpServerPort(port);
+		saveConfig();
+		updateServerStatus(true, port);
+		// Rewrite existing template sources only once the new port actually serves them.
+		if (templateManager) {
+			templateManager->migrateTemplateSources();
+		}
+		return;
+	}
 
-	// Rewrite existing template sources only once the new port actually serves them.
-	if (startServer() && templateManager) {
-		templateManager->migrateTemplateSources();
+	// Keep the previous port. If the server was not running (the configured port failed at startup), try
+	// it once more so the dock shows its current state.
+	viewParts.serverPortSpinBox->setValue(previousPort);
+	const bool previousRunning = wasRunning || httpSyncServer->startServer(previousPort);
+	if (previousRunning) {
+		viewParts.serverStatusLabel->setText(
+			QString::fromUtf8(obs_module_text("SERVER_STATUS_PORT_CHANGE_FAILED"))
+				.arg(port)
+				.arg(previousPort));
+		viewParts.serverStatusLabel->setStyleSheet("color: red;");
+	} else {
+		updateServerStatus(false, port);
 	}
 }
 

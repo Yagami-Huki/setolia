@@ -1,6 +1,9 @@
 #include "template_paths.hpp"
 
 #include <QDir>
+#include <QDirIterator>
+#include <QFile>
+#include <QFileInfo>
 #include <QRegularExpression>
 #include <QUrl>
 
@@ -37,6 +40,80 @@ void setHttpServerPort(int port)
 	if (isValidHttpServerPort(port)) {
 		g_httpServerPort.store(port);
 	}
+}
+
+namespace {
+
+bool containsName(const QStringList &names, const QString &name, Qt::CaseSensitivity caseSensitivity)
+{
+	for (const QString &candidate : names) {
+		if (QString::compare(candidate, name, caseSensitivity) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+} // namespace
+
+MergedTemplateNames mergeTemplateNames(const QStringList &userNames, const QStringList &bundledNames,
+				       Qt::CaseSensitivity caseSensitivity)
+{
+	MergedTemplateNames merged;
+	for (const QString &name : userNames) {
+		if (!containsName(merged.names, name, caseSensitivity)) {
+			merged.names.append(name);
+		}
+		if (containsName(bundledNames, name, caseSensitivity) &&
+		    !containsName(merged.overridden, name, caseSensitivity)) {
+			merged.overridden.append(name);
+		}
+	}
+	for (const QString &name : bundledNames) {
+		if (!containsName(merged.names, name, caseSensitivity)) {
+			merged.names.append(name);
+		}
+	}
+	// Same order as QDir::entryList's default (name, ignoring case), which the dock used before.
+	merged.names.sort(Qt::CaseInsensitive);
+	merged.overridden.sort(Qt::CaseInsensitive);
+	return merged;
+}
+
+QStringList customTemplatesToCopy(const QStringList &bundledNames, const QStringList &builtinNames,
+				  const QStringList &userNames, Qt::CaseSensitivity caseSensitivity)
+{
+	QStringList result;
+	for (const QString &name : bundledNames) {
+		if (!containsName(builtinNames, name, caseSensitivity) &&
+		    !containsName(userNames, name, caseSensitivity)) {
+			result.append(name);
+		}
+	}
+	return result;
+}
+
+bool copyDirectoryRecursively(const QString &source, const QString &destination)
+{
+	const QDir sourceDir(source);
+	if (!sourceDir.exists() || !QDir().mkpath(destination)) {
+		return false;
+	}
+
+	bool ok = true;
+	QDirIterator it(source, QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System,
+			QDirIterator::Subdirectories);
+	while (it.hasNext()) {
+		const QString path = it.next();
+		const QFileInfo info = it.fileInfo();
+		const QString target = QDir(destination).filePath(sourceDir.relativeFilePath(path));
+		if (info.isDir()) {
+			ok = QDir().mkpath(target) && ok;
+		} else if (!QFileInfo::exists(target)) {
+			ok = QDir().mkpath(QFileInfo(target).absolutePath()) && QFile::copy(path, target) && ok;
+		}
+	}
+	return ok;
 }
 
 QString templateUrl(const QString &relativePath, int port)

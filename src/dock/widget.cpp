@@ -201,6 +201,7 @@ void SetoliaDockWidget::wireSignals()
 
 void SetoliaDockWidget::bootstrap()
 {
+	actions->prepareUserTemplates();
 	actions->reloadTemplates();
 
 	// Load saved configuration
