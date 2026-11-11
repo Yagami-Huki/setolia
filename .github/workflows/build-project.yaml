@@ -74,6 +74,8 @@ jobs:
   unit-tests:
     name: Unit Tests 🧪
     runs-on: ubuntu-24.04
+    # apt can hang when the runner's package mirror is unreachable; fail fast instead of waiting for the 6 h default.
+    timeout-minutes: 15
     defaults:
       run:
         shell: bash
