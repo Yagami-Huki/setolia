@@ -61,6 +61,23 @@ The HTTP server uses port `8080` by default. If another application already uses
 
 If you call `http://127.0.0.1:8080/next` from Stream Deck or similar tools, update the port in those URLs as well.
 
+If the new port is used by another application, the server keeps running on the previous port and the dock shows "Port <new> is not available (still running on <old>)". The setting is not changed in that case.
+
+### Custom templates
+
+Custom templates go into the user template folder inside the OBS configuration folder. "Open Templates Folder" in the dock opens it.
+
+| OS | User template folder |
+| --- | --- |
+| Windows | `%APPDATA%\obs-studio\plugin_config\setolia\templates` |
+| macOS | `~/Library/Application Support/obs-studio/plugin_config/setolia/templates` |
+| Linux | `~/.config/obs-studio/plugin_config/setolia/templates` |
+
+- Copy a bundled template folder (`data\templates` of the install folder) into this folder, rename it and edit it. While the folder is empty, a `README.txt` with these instructions is placed in it.
+- The template list shows both the user templates and the bundled templates. A folder with the same name as a bundled template takes precedence (per file: files missing in the user folder are taken from the bundled template).
+- The user template folder is not removed when SETOLIA is uninstalled or updated.
+- Custom templates that earlier versions expected in the bundled template folder (e.g. `C:\ProgramData\obs-studio\plugins\setolia\data\templates`) are copied to the user template folder automatically on startup (the originals are left in place). Template URLs do not change, so browser sources keep working without being re-added.
+
 ## License & Acknowledgements
 
 This software is licensed under the GPL-3.0 License.

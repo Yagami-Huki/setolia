@@ -1,4 +1,14 @@
-# OBS-independent unit tests. Configure with -DENABLE_TESTS=ON and run ctest.
+# OBS-independent unit tests. They only need Qt6 Core.
+#  - With the plugin:   configure the project with -DENABLE_TESTS=ON and run ctest.
+#  - Standalone (CI):   cmake -S tests -B build_tests && cmake --build build_tests && ctest --test-dir build_tests
+
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  cmake_minimum_required(VERSION 3.28...3.30)
+  project(setolia_tests LANGUAGES CXX)
+  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
+  enable_testing()
+endif()
 
 find_package(Qt6 REQUIRED COMPONENTS Core)
 

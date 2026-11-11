@@ -50,25 +50,28 @@ HTTPSyncServer::~HTTPSyncServer()
 	stopServer();
 }
 
-bool HTTPSyncServer::startServer(int port)
+std::unique_ptr<httplib::Server> HTTPSyncServer::createBoundServer(int port)
 {
 	// A stopped httplib::Server cannot be reused, so every start builds a fresh instance.
-	stopServer();
-
-	srv = std::make_unique<httplib::Server>();
-	srv->new_task_queue = [] {
+	auto server = std::make_unique<httplib::Server>();
+	server->new_task_queue = [] {
 		return new httplib::ThreadPool(kThreadPoolSize);
 	};
-	srv->set_socket_options(configureListenSocket);
-	setupRoutes();
+	server->set_socket_options(configureListenSocket);
+	setupRoutes(*server);
 
 	// Bind synchronously so a port conflict is reported to the caller right away.
-	if (!srv->bind_to_port(kBindAddress, port)) {
+	if (!server->bind_to_port(kBindAddress, port)) {
 		blog(LOG_ERROR, "HTTPSyncServer: Failed to bind %s:%d (port in use?)", kBindAddress, port);
-		srv.reset();
-		return false;
+		return nullptr;
 	}
+	return server;
+}
 
+void HTTPSyncServer::launch(std::unique_ptr<httplib::Server> server, int port)
+{
+	srv = std::move(server);
+	boundPort = port;
 	{
 		std::lock_guard<std::mutex> lock(srv_mutex);
 		srv_stopped.store(false);
@@ -81,6 +84,28 @@ bool HTTPSyncServer::startServer(int port)
 	});
 
 	blog(LOG_INFO, "HTTPSyncServer: Listening on %s:%d", kBindAddress, port);
+}
+
+bool HTTPSyncServer::startServer(int port)
+{
+	stopServer();
+	auto server = createBoundServer(port);
+	if (!server) {
+		return false;
+	}
+	launch(std::move(server), port);
+	return true;
+}
+
+bool HTTPSyncServer::switchPort(int port)
+{
+	// Different ports can be bound at the same time, so the old server stays up until the new one is bound.
+	auto server = createBoundServer(port);
+	if (!server) {
+		return false;
+	}
+	stopServer();
+	launch(std::move(server), port);
 	return true;
 }
 
@@ -103,6 +128,7 @@ void HTTPSyncServer::stopServer()
 	}
 
 	srv.reset();
+	boundPort = 0;
 }
 
 bool HTTPSyncServer::isRunning() const
@@ -197,26 +223,25 @@ bool HTTPSyncServer::streamUpdates(httplib::DataSink &sink,
 	return false;
 }
 
-void HTTPSyncServer::setupRoutes()
+void HTTPSyncServer::setupRoutes(httplib::Server &server)
 {
-	if (!srv) {
-		blog(LOG_ERROR, "HTTPSyncServer: HTTP server not initialized");
-		return;
-	}
 
 	// GET /templates/* - Serve template files so browser sources load them over http://127.0.0.1
 	// instead of as local files (OBS 33 / CEF blocks fetch from file:// pages to 127.0.0.1).
+	// The user template folder is mounted first: httplib tries mount points in registration order, so a
+	// file in the user folder wins over the bundled file with the same path.
 	// no-cache: edits to templates are picked up on the next reload.
-	const QString templatesDir = setolia::templatesDirectoryPath();
-	if (templatesDir.isEmpty() ||
-	    !srv->set_mount_point(setolia::kTemplatesMountPoint, templatesDir.toUtf8().toStdString(),
-				  {{"Cache-Control", "no-cache"}})) {
-		blog(LOG_WARNING, "HTTPSyncServer: Failed to mount templates directory: %s",
-		     templatesDir.toUtf8().constData());
+	for (const QString &templatesDir : {setolia::userTemplatesDirectoryPath(), setolia::templatesDirectoryPath()}) {
+		if (templatesDir.isEmpty() ||
+		    !server.set_mount_point(setolia::kTemplatesMountPoint, templatesDir.toUtf8().toStdString(),
+					    {{"Cache-Control", "no-cache"}})) {
+			blog(LOG_WARNING, "HTTPSyncServer: Failed to mount templates directory: %s",
+			     templatesDir.toUtf8().constData());
+		}
 	}
 
 	// GET /data - Retrieve current state as JSON
-	srv->Get("/data", [this](const httplib::Request &, httplib::Response &res) {
+	server.Get("/data", [this](const httplib::Request &, httplib::Response &res) {
 		res.set_header("Access-Control-Allow-Origin", "*");
 		std::string data = getCachedData();
 		if (data.empty()) {
@@ -227,7 +252,7 @@ void HTTPSyncServer::setupRoutes()
 	});
 
 	// GET /events - Server-Sent Events stream with auto-reconnect support
-	srv->Get("/events", [this](const httplib::Request &, httplib::Response &res) {
+	server.Get("/events", [this](const httplib::Request &, httplib::Response &res) {
 		res.set_header("Access-Control-Allow-Origin", "*");
 		res.set_header("Content-Type", "text/event-stream");
 		res.set_header("Cache-Control", "no-cache");
@@ -240,7 +265,7 @@ void HTTPSyncServer::setupRoutes()
 	});
 
 	// GET /ws - WebSocket endpoint for real-time updates
-	srv->Get("/ws", [this](const httplib::Request &req, httplib::Response &res) {
+	server.Get("/ws", [this](const httplib::Request &req, httplib::Response &res) {
 		res.set_header("Access-Control-Allow-Origin", "*");
 
 		if (req.get_header_value("Upgrade") != "websocket") {
@@ -273,7 +298,7 @@ void HTTPSyncServer::setupRoutes()
 	});
 
 	// POST /next - External command to trigger nextSong
-	srv->Post("/next", [this](const httplib::Request &req, httplib::Response &res) {
+	server.Post("/next", [this](const httplib::Request &req, httplib::Response &res) {
 		res.set_header("Access-Control-Allow-Origin", "*");
 
 		// Security: Validate request origin if needed

@@ -25,6 +25,7 @@ public:
 
 	void startStreamingTimer();
 	void stopStreamingTimer();
+	void prepareUserTemplates();
 	void reloadTemplates();
 	void openTemplateDirectory();
 	void addSelectedTemplateToScene();

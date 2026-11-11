@@ -5,8 +5,14 @@
 
 class TemplateManager {
 public:
-	QStringList listTemplateNames() const;
+	// Templates of the user folder and the bundled folder, each name once (see setolia::mergeTemplateNames).
+	// If overridden is given, it receives the user templates that hide a bundled template of the same name.
+	QStringList listTemplateNames(QStringList *overridden = nullptr) const;
+	// Opens the user template folder (created if missing; a README.txt is placed in it while it is empty).
 	bool openTemplateDirectory() const;
+	// Creates the user template folder and copies custom templates that older versions kept in the bundled
+	// folder into it (copy, not move: the bundled folder may not be writable). Call once at startup.
+	void prepareUserTemplateDirectory() const;
 	bool addTemplateToCurrentScene(const QString &templateName) const;
 
 	// Points template browser sources at the plugin's HTTP server on the current port:

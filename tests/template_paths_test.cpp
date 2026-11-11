@@ -1,13 +1,22 @@
 #include "../src/source/template_paths.hpp"
 
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QString>
 #include <QStringList>
+#include <QTemporaryDir>
 
 #include <ostream>
 
 std::ostream &operator<<(std::ostream &os, const QString &s)
 {
 	return os << '"' << s.toStdString() << '"';
+}
+
+std::ostream &operator<<(std::ostream &os, const QByteArray &b)
+{
+	return os << '"' << b.toStdString() << '"';
 }
 
 #include "test_support.hpp"
@@ -189,6 +198,116 @@ void testPortSetting()
 	setolia::setHttpServerPort(setolia::kDefaultHttpServerPort);
 }
 
+QString joined(const QStringList &list)
+{
+	return list.join(QLatin1Char(','));
+}
+
+void testMergeTemplateNames()
+{
+	const QStringList bundled = {"dark", "light", "simple"};
+
+	// Only bundled templates: unchanged list, nothing overridden.
+	auto merged = setolia::mergeTemplateNames({}, bundled, Qt::CaseSensitive);
+	CHECK_EQ(joined(merged.names), QStringLiteral("dark,light,simple"));
+	CHECK(merged.overridden.isEmpty());
+
+	// User templates are added, sorted ignoring case; a user "light" overrides the bundled one.
+	merged = setolia::mergeTemplateNames({"light", "My Custom", "aqua"}, bundled, Qt::CaseSensitive);
+	CHECK_EQ(joined(merged.names), QStringLiteral("aqua,dark,light,My Custom,simple"));
+	CHECK_EQ(joined(merged.overridden), QStringLiteral("light"));
+
+	// Case-insensitive platforms treat "LIGHT" and "light" as the same template (the user spelling is kept).
+	merged = setolia::mergeTemplateNames({"LIGHT"}, bundled, Qt::CaseInsensitive);
+	CHECK_EQ(joined(merged.names), QStringLiteral("dark,LIGHT,simple"));
+	CHECK_EQ(joined(merged.overridden), QStringLiteral("LIGHT"));
+	merged = setolia::mergeTemplateNames({"LIGHT"}, bundled, Qt::CaseSensitive);
+	CHECK_EQ(merged.names.size(), 4);
+	CHECK(merged.names.contains("LIGHT") && merged.names.contains("light"));
+	CHECK(merged.overridden.isEmpty());
+}
+
+void testCustomTemplatesToCopy()
+{
+	const QStringList builtin = {"dark", "light"};
+	CHECK(setolia::customTemplatesToCopy({"dark", "light"}, builtin, {}, Qt::CaseSensitive).isEmpty());
+	CHECK_EQ(joined(setolia::customTemplatesToCopy({"dark", "mine", "light", "other"}, builtin, {},
+						       Qt::CaseSensitive)),
+		 QStringLiteral("mine,other"));
+	// Already in the user folder: skipped.
+	CHECK_EQ(joined(setolia::customTemplatesToCopy({"dark", "mine", "other"}, builtin, {"other"},
+						       Qt::CaseSensitive)),
+		 QStringLiteral("mine"));
+	CHECK(setolia::customTemplatesToCopy({"Mine"}, builtin, {"mine"}, Qt::CaseInsensitive).isEmpty());
+	CHECK(setolia::customTemplatesToCopy({"DARK"}, builtin, {}, Qt::CaseInsensitive).isEmpty());
+}
+
+void writeFile(const QString &path, const QByteArray &content)
+{
+	QDir().mkpath(QFileInfo(path).absolutePath());
+	QFile file(path);
+	CHECK(file.open(QIODevice::WriteOnly));
+	file.write(content);
+}
+
+QByteArray readFile(const QString &path)
+{
+	QFile file(path);
+	return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray("<missing>");
+}
+
+void testCopyDirectoryRecursively()
+{
+	QTemporaryDir tmp;
+	CHECK(tmp.isValid());
+	const QString source = tmp.filePath("bundled/mine");
+	writeFile(source + "/index.html", "index");
+	writeFile(source + "/img/bg.png", "png");
+	QDir().mkpath(source + "/empty");
+
+	const QString destination = tmp.filePath("user/mine");
+	writeFile(destination + "/style.css", "user style"); // existing files are kept
+	writeFile(source + "/style.css", "bundled style");
+
+	CHECK(setolia::copyDirectoryRecursively(source, destination));
+	CHECK_EQ(readFile(destination + "/index.html"), QByteArray("index"));
+	CHECK_EQ(readFile(destination + "/img/bg.png"), QByteArray("png"));
+	CHECK_EQ(readFile(destination + "/style.css"), QByteArray("user style"));
+	CHECK(QFileInfo(destination + "/empty").isDir());
+
+	CHECK(!setolia::copyDirectoryRecursively(tmp.filePath("does-not-exist"), tmp.filePath("x")));
+}
+
+void testLegacyPathWithUserTemplateNames()
+{
+	// A custom template kept in an old bundled folder is converted once it exists in the user folder: the
+	// migration passes the names of both folders to rule (b).
+	const QStringList userNames = {"my-custom"};
+	const QStringList names = setolia::mergeTemplateNames(userNames, kNames, Qt::CaseInsensitive).names;
+	const auto match = setolia::templateRelativePathFromLocalFile(
+		"C:/Program Files/obs-studio/data/obs-plugins/setolia/templates/my-custom/index.html", kWinTemplatesDir,
+		names, Qt::CaseInsensitive);
+	CHECK(match.has_value());
+	if (match) {
+		CHECK_EQ(match->relativePath, QStringLiteral("my-custom/index.html"));
+		CHECK(match->rule == TemplateMigrationRule::LegacyTemplatesPath);
+	}
+	// Without the user names it is not recognized.
+	CHECK(!setolia::templateRelativePathFromLocalFile(
+		"C:/Program Files/obs-studio/data/obs-plugins/setolia/templates/my-custom/index.html", kWinTemplatesDir,
+		kNames, Qt::CaseInsensitive));
+
+	// Rule (a) for the user folder (no names needed).
+	const QString userDir =
+		QStringLiteral("C:/Users/me/AppData/Roaming/obs-studio/plugin_config/setolia/templates");
+	const auto userMatch = setolia::templateRelativePathFromLocalFile(userDir + "/my-custom/index.html", userDir,
+									  {}, Qt::CaseInsensitive);
+	CHECK(userMatch.has_value());
+	if (userMatch) {
+		CHECK_EQ(userMatch->relativePath, QStringLiteral("my-custom/index.html"));
+	}
+}
+
 } // namespace
 
 int main()
@@ -204,5 +323,9 @@ int main()
 	testUnrelatedUrlsUnchanged();
 	testTemplateUrl();
 	testPortSetting();
+	testMergeTemplateNames();
+	testCustomTemplatesToCopy();
+	testCopyDirectoryRecursively();
+	testLegacyPathWithUserTemplateNames();
 	return setolia_test::finish("template_paths_test");
 }

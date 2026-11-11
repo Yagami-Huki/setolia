@@ -10,13 +10,100 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QSaveFile>
 
 #include <cstring>
 
 using setolia::templatesDirectoryPath;
+using setolia::userTemplatesDirectoryPath;
 
 namespace {
+// Names of custom templates already copied from the bundled folder, so a template the user deleted from the
+// user folder is not copied again on the next start.
+constexpr const char *kCopiedTemplatesFileName = "copied-templates.txt";
+
+const char *const kUserTemplatesReadme =
+	"SETOLIA - カスタムテンプレート / Custom templates\n"
+	"\n"
+	"[日本語]\n"
+	"このフォルダにはカスタムテンプレートを置きます。\n"
+	"1. ドックの「テンプレートフォルダを開く」で開いたこのフォルダに、同梱テンプレートのフォルダ\n"
+	"   (例: light)をコピーし、フォルダ名を変えてください。同梱テンプレートは SETOLIA のインストール先の\n"
+	"   data/templates にあります(例: C:\\ProgramData\\obs-studio\\plugins\\setolia\\data\\templates)。\n"
+	"2. コピーしたフォルダの index.html / style.css / script.js / template.json を編集してください。\n"
+	"3. ドックの「テンプレートを再読み込み」を押すと、一覧に表示されます。\n"
+	"同梱テンプレートと同じ名前のフォルダを置くと、こちらが優先されます。\n"
+	"このフォルダは SETOLIA をアンインストール・更新しても削除されません。\n"
+	"\n"
+	"[English]\n"
+	"Put your custom templates in this folder.\n"
+	"1. Copy a bundled template folder (e.g. light) into this folder and rename it. The bundled templates are in\n"
+	"   data/templates of the SETOLIA install folder\n"
+	"   (e.g. C:\\ProgramData\\obs-studio\\plugins\\setolia\\data\\templates).\n"
+	"2. Edit index.html / style.css / script.js / template.json in the copied folder.\n"
+	"3. Press \"Reload Templates\" in the dock to show it in the list.\n"
+	"A folder with the same name as a bundled template takes precedence over the bundled one.\n"
+	"This folder is kept when SETOLIA is uninstalled or updated.\n";
+
+QStringList templateFolderNames(const QString &baseDir)
+{
+	if (baseDir.isEmpty() || !QFileInfo::exists(baseDir)) {
+		return {};
+	}
+	return QDir(baseDir).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+}
+
+// Folder of the template that the HTTP server serves for templateName: the user folder wins.
+QString templateDirectory(const QString &templateName)
+{
+	for (const QString &baseDir : {userTemplatesDirectoryPath(), templatesDirectoryPath()}) {
+		if (baseDir.isEmpty()) {
+			continue;
+		}
+		const QFileInfo dir(baseDir, templateName);
+		if (dir.isDir()) {
+			return dir.absoluteFilePath();
+		}
+	}
+	return QString();
+}
+
+QString copiedTemplatesFilePath()
+{
+	char *path = obs_module_config_path(kCopiedTemplatesFileName);
+	if (!path) {
+		return QString();
+	}
+	const QString result = QString::fromUtf8(path);
+	bfree(path);
+	return result;
+}
+
+QStringList readCopiedTemplates()
+{
+	QFile file(copiedTemplatesFilePath());
+	if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+		return {};
+	}
+	return QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+}
+
+void writeCopiedTemplates(const QStringList &names)
+{
+	const QString path = copiedTemplatesFilePath();
+	if (path.isEmpty()) {
+		return;
+	}
+	QSaveFile file(path);
+	if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+		return;
+	}
+	file.write((names.join(QLatin1Char('\n')) + QLatin1Char('\n')).toUtf8());
+	file.commit();
+}
+
 struct MigrationContext {
+	QString userTemplatesDir;
 	QString templatesDir;
 	QStringList templateNames;
 	int port = setolia::kDefaultHttpServerPort;
@@ -48,8 +135,12 @@ bool migrateBrowserSource(void *param, obs_source_t *source)
 
 	if (obs_data_get_bool(settings, "is_local_file")) {
 		const QString localFile = QString::fromUtf8(obs_data_get_string(settings, "local_file"));
-		const auto match =
-			setolia::templateRelativePathFromLocalFile(localFile, ctx->templatesDir, ctx->templateNames);
+		// Rule (a) for the user folder first, then rules (a) and (b) for the bundled folder.
+		auto match = setolia::templateRelativePathFromLocalFile(localFile, ctx->userTemplatesDir, {});
+		if (!match) {
+			match = setolia::templateRelativePathFromLocalFile(localFile, ctx->templatesDir,
+									   ctx->templateNames);
+		}
 		if (match) {
 			const QString url = setolia::templateUrl(match->relativePath, ctx->port);
 			applyTemplateUrl(source, url);
@@ -75,22 +166,29 @@ bool migrateBrowserSource(void *param, obs_source_t *source)
 }
 } // namespace
 
-QStringList TemplateManager::listTemplateNames() const
+QStringList TemplateManager::listTemplateNames(QStringList *overridden) const
 {
-	const QString baseDir = templatesDirectoryPath();
-	if (baseDir.isEmpty() || !QFileInfo::exists(baseDir)) {
-		return {};
+	const setolia::MergedTemplateNames merged = setolia::mergeTemplateNames(
+		templateFolderNames(userTemplatesDirectoryPath()), templateFolderNames(templatesDirectoryPath()));
+	if (overridden) {
+		*overridden = merged.overridden;
 	}
-
-	QDir dir(baseDir);
-	return dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+	return merged.names;
 }
 
 bool TemplateManager::openTemplateDirectory() const
 {
-	const QString baseDir = templatesDirectoryPath();
-	if (baseDir.isEmpty() || !QFileInfo::exists(baseDir)) {
+	const QString baseDir = userTemplatesDirectoryPath();
+	if (baseDir.isEmpty() || !QDir().mkpath(baseDir)) {
 		return false;
+	}
+
+	if (QDir(baseDir).isEmpty(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden)) {
+		QSaveFile readme(QDir(baseDir).filePath("README.txt"));
+		if (readme.open(QIODevice::WriteOnly | QIODevice::Text)) {
+			readme.write(kUserTemplatesReadme);
+			readme.commit();
+		}
 	}
 
 #if defined(_WIN32)
@@ -102,18 +200,50 @@ bool TemplateManager::openTemplateDirectory() const
 #endif
 }
 
+void TemplateManager::prepareUserTemplateDirectory() const
+{
+	const QString userDir = userTemplatesDirectoryPath();
+	if (userDir.isEmpty() || !QDir().mkpath(userDir)) {
+		blog(LOG_WARNING, "[SETOLIA] Failed to create the user template folder: %s",
+		     userDir.toUtf8().constData());
+		return;
+	}
+
+	const QString bundledDir = templatesDirectoryPath();
+	QStringList alreadyCopied = readCopiedTemplates();
+	QStringList userNames = templateFolderNames(userDir);
+	userNames.append(alreadyCopied); // deleted by the user after an earlier copy: do not bring it back
+	const QStringList toCopy = setolia::customTemplatesToCopy(templateFolderNames(bundledDir),
+								  setolia::builtinTemplateNames(), userNames);
+	if (toCopy.isEmpty()) {
+		return;
+	}
+
+	for (const QString &name : toCopy) {
+		const QString source = QDir(bundledDir).filePath(name);
+		const QString destination = QDir(userDir).filePath(name);
+		if (setolia::copyDirectoryRecursively(source, destination)) {
+			alreadyCopied.append(name);
+			blog(LOG_INFO, "[SETOLIA] Copied custom template '%s' from '%s' to '%s'",
+			     name.toUtf8().constData(), source.toUtf8().constData(), destination.toUtf8().constData());
+		} else {
+			blog(LOG_WARNING, "[SETOLIA] Failed to copy custom template '%s' from '%s' to '%s'",
+			     name.toUtf8().constData(), source.toUtf8().constData(), destination.toUtf8().constData());
+		}
+	}
+	writeCopiedTemplates(alreadyCopied);
+}
+
 bool TemplateManager::addTemplateToCurrentScene(const QString &templateName) const
 {
 	if (templateName.trimmed().isEmpty()) {
 		return false;
 	}
 
-	const QString baseDir = templatesDirectoryPath();
-	if (baseDir.isEmpty() || !QFileInfo::exists(baseDir)) {
+	const QString templateDir = templateDirectory(templateName);
+	if (templateDir.isEmpty()) {
 		return false;
 	}
-
-	const QString templateDir = QFileInfo(baseDir, templateName).absoluteFilePath();
 
 	if (!QFileInfo(templateDir, "index.html").isFile() || !QFileInfo(templateDir, "script.js").isFile() ||
 	    !QFileInfo(templateDir, "style.css").isFile()) {
@@ -179,7 +309,10 @@ bool TemplateManager::addTemplateToCurrentScene(const QString &templateName) con
 int TemplateManager::migrateTemplateSources() const
 {
 	MigrationContext ctx;
+	ctx.userTemplatesDir = userTemplatesDirectoryPath();
 	ctx.templatesDir = templatesDirectoryPath(); // may be empty: rule (b) and port rewrites still apply
+	// Rule (b) accepts names of both folders, so custom templates that were copied from an old bundled
+	// folder to the user folder are recognized as well.
 	ctx.templateNames = listTemplateNames();
 	ctx.port = setolia::httpServerPort();
 	obs_enum_sources(migrateBrowserSource, &ctx);

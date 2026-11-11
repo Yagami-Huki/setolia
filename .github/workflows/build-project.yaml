@@ -71,6 +71,33 @@ jobs:
             echo "pluginName=${plugin_name}" >> $GITHUB_OUTPUT
           fi
 
+  unit-tests:
+    name: Unit Tests 🧪
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Dependencies 🛍️
+        run: |
+          : Install Dependencies 🛍️
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ qt6-base-dev
+
+      - name: Build Tests 🧱
+        # The tests only need Qt6 Core, so they are configured on their own (no OBS sources required).
+        run: |
+          : Build Tests 🧱
+          cmake -S tests -B build_tests -G Ninja -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build_tests
+
+      - name: Run Tests 🧪
+        run: |
+          : Run Tests 🧪
+          ctest --test-dir build_tests --output-on-failure
+
   macos-build:
     name: Build for macOS 🍏
     runs-on: macos-15
