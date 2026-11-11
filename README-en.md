@@ -25,6 +25,7 @@ Existing settings and scenes keep working after the update; no action is require
 - New "SETOLIA: Next Song" hotkey.
 - Settings are saved automatically after each edit, so recent edits survive an OBS crash.
 - Timestamps no longer drift during long streams, and they also run when OBS is already streaming at startup.
+- When you restart OBS and resume the same broadcast, the timestamp can continue from the previous stream ("Continue from the previous stream" button).
 - Name and version are shown in the plugin manager of OBS 32 and later.
 
 ## Installation
@@ -68,6 +69,17 @@ Please refer to the Japanese manual available at [Booth](https://logicbox.booth.
 OBS 33 blocks requests to `127.0.0.1` from browser sources loaded as local files, so templates are now served by the plugin's HTTP server (`http://127.0.0.1:8080/templates/...`).
 
 Template browser sources added with earlier versions are converted to the URL form automatically when OBS starts and when the scene collection changes, so you don't need to re-add your templates. Sources that still point at an old install location (`C:\Program Files\obs-studio\data\obs-plugins\setolia\templates\...`, or `<OBS>\data\obs-plugins\setolia\templates\...` of a portable OBS 32) are converted too, as long as a template with the same name exists.
+
+### Timestamps after resuming an interrupted stream
+
+When OBS is closed (or crashes) during a stream, YouTube keeps the broadcast waiting for a while. If you resume within that time, the archive continues from before the interruption, but the timestamp would start again from 0.
+
+If a stream starts less than a minute after the previous one stopped, a "Continue from the previous stream (started HH:MM)" button appears below the timestamp. Pressing it makes the timestamp count from the start of the previous stream, including the interruption (matching the archive).
+
+- If you don't press it, the timestamp starts from 0 as before. Don't press it when you start a different broadcast.
+- Songs moved on before pressing keep their timestamps; press it right after resuming, before the first song change.
+- Pressing it after each interruption keeps counting from the very first start.
+- While streaming, the start time is recorded in `stream-session.json` (SETOLIA config folder) every 10 seconds, so this also works after OBS crashes.
 
 ### Next song with a hotkey
 

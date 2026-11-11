@@ -43,3 +43,13 @@ add_executable(
   ../src/source/next_request_policy.hpp
 )
 add_test(NAME next_request_policy_test COMMAND next_request_policy_test)
+
+add_executable(
+  stream_session_test
+  stream_session_test.cpp
+  test_support.hpp
+  ../src/dock/stream_session.cpp
+  ../src/dock/stream_session.hpp
+)
+target_link_libraries(stream_session_test PRIVATE Qt6::Core)
+add_test(NAME stream_session_test COMMAND stream_session_test)

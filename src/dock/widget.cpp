@@ -120,6 +120,10 @@ void SetoliaDockWidget::buildUI()
 	viewParts.timestampToggle = new QCheckBox(obs_module_text("TOGGLE_TIMESTAMP"), content);
 	viewParts.timestampToggle->setChecked(false);
 	viewParts.timestampTimer = new QTimer(this);
+	viewParts.resumeTimestampButton = new QPushButton(content);
+	viewParts.resumeTimestampButton->setCursor(Qt::PointingHandCursor);
+	viewParts.resumeTimestampButton->setToolTip(obs_module_text("RESUME_TIMESTAMP_TOOLTIP"));
+	viewParts.resumeTimestampButton->setVisible(false);
 
 	auto *lyricLabel = new QLabel(obs_module_text("LYRIC_SEARCH_LABEL"), content);
 	lyricLabel->setStyleSheet("font-weight: bold;");
@@ -174,6 +178,7 @@ void SetoliaDockWidget::buildUI()
 	contentLayout->addSpacing(10);
 	contentLayout->addWidget(viewParts.nextButton);
 	contentLayout->addWidget(viewParts.timestampDisplay);
+	contentLayout->addWidget(viewParts.resumeTimestampButton);
 	contentLayout->addWidget(viewParts.timestampToggle);
 	contentLayout->addWidget(lyricLabel);
 	contentLayout->addLayout(lyricLayout);
@@ -212,6 +217,8 @@ void SetoliaDockWidget::wireSignals()
 	connect(viewParts.setlistText, &QTextEdit::textChanged, this, [this]() { actions->onTextStateChanged(); });
 
 	connect(viewParts.nextButton, &QPushButton::clicked, this, [this]() { actions->nextSong(); });
+	connect(viewParts.resumeTimestampButton, &QPushButton::clicked, this,
+		[this]() { actions->continueFromPreviousStream(); });
 	connect(viewParts.resetButton, &QPushButton::clicked, this, [this]() { actions->resetAll(); });
 	connect(viewParts.lyricSearchButton, &QPushButton::clicked, this, [this]() { actions->lyricSearch(); });
 	connect(viewParts.openTemplateButton, &QPushButton::clicked, this,

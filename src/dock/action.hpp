@@ -6,6 +6,9 @@
 #include <memory>
 #include <string>
 #include "view.hpp"
+#include "stream_session.hpp"
+
+#include <optional>
 
 class TemplateManager;
 class HTTPSyncServer;
@@ -36,6 +39,9 @@ public:
 	void prepareUserTemplates();
 	// Starts the timestamp if OBS is streaming but the timer is not running yet.
 	void resumeStreamingTimerIfActive();
+	// "Continue from the previous stream": counts from the start of the stream that stopped shortly before this
+	// one (e.g. OBS was restarted while YouTube kept the broadcast waiting).
+	void continueFromPreviousStream();
 	void reloadTemplates();
 	void openTemplateDirectory();
 	void addSelectedTemplateToScene();
@@ -79,6 +85,9 @@ private:
 	// Timestamp text inserted by nextSong() and shown in the dock.
 	QString currentTimestampText() const;
 	void updateTimestampDisplay();
+	void onTimestampTick();
+	// Stream session record (stream-session.json in the plugin config folder).
+	void writeStreamSession();
 
 	DockViewParts &viewParts;
 	std::unique_ptr<TemplateManager> templateManager;
@@ -88,6 +97,11 @@ private:
 	// Stream time = streamClock.elapsed() + streamOffsetMs, computed on demand so it does not drift.
 	QElapsedTimer streamClock;
 	qint64 streamOffsetMs = 0;
+	// Current stream, written every setolia::kStreamSessionHeartbeatMs while streaming and on stop.
+	setolia::StreamSession currentSession;
+	qint64 lastSessionWriteMs = 0;
+	// Stream that may be continued (read when this stream started).
+	std::optional<setolia::StreamSession> previousSession;
 	bool autosaveEnabled = false;
 	bool active = true;
 	size_t nextSongHotkeyId = static_cast<size_t>(-1); // OBS_INVALID_HOTKEY_ID

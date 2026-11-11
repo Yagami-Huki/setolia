@@ -29,6 +29,8 @@ struct DockViewParts {
 	QLineEdit *timestampDisplay = nullptr;
 	QCheckBox *timestampToggle = nullptr;
 	QTimer *timestampTimer = nullptr;
+	// Shown after a restart within setolia::kStreamResumeWindowMs of the previous stream.
+	QPushButton *resumeTimestampButton = nullptr;
 
 	// Reset
 	QPushButton *resetButton = nullptr;
