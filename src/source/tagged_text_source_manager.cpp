@@ -1,6 +1,6 @@
 #include "tagged_text_source_manager.hpp"
+#include "setolia_text_sources.hpp"
 
-#include <obs-frontend-api.h>
 #include <obs-module.h>
 
 namespace {
@@ -24,7 +24,6 @@ QMutex g_currentTextsMutex;
 
 struct SyncContext {
 	TaggedTextSourceManager::TextState state = TaggedTextSourceManager::TextState::Reserve;
-	QString tag;
 	QString text;
 };
 
@@ -35,19 +34,18 @@ bool syncTaggedSourceCallback(void *param, obs_source_t *source)
 		return true;
 	}
 
+	// Cheap type check first, so the settings of unrelated sources are never copied. Compare the unversioned
+	// id: sources saved by older versions use v1 of the SETOLIA types, new ones v2.
+	if (!is_setolia_text_source_id(obs_source_get_unversioned_id(source))) {
+		return true;
+	}
+
 	if (TaggedTextSourceManager::sourceState(source) != context->state) {
 		return true;
 	}
 
-	const QString sourceTag = TaggedTextSourceManager::sourceTag(source);
-	if (sourceTag.isEmpty()) {
+	if (TaggedTextSourceManager::sourceTag(source).isEmpty()) {
 		return true;
-	}
-
-	if (!context->tag.isEmpty()) {
-		if (sourceTag != context->tag) {
-			return true;
-		}
 	}
 
 	obs_data_t *settings = obs_source_get_settings(source);
@@ -129,11 +127,6 @@ bool TaggedTextSourceManager::setSourceState(obs_source_t *source, TextState sta
 	return true;
 }
 
-QString TaggedTextSourceManager::buildTaggedSourceName(const QString &sourceName, const QString &tag)
-{
-	return QString("%1%2%3 %4").arg(kTagPrefix).arg(tag).arg(kTagSuffix).arg(sourceName);
-}
-
 QString TaggedTextSourceManager::extractTagFromSourceName(const char *sourceName)
 {
 	if (!sourceName) {
@@ -153,24 +146,6 @@ QString TaggedTextSourceManager::extractTagFromSourceName(const char *sourceName
 	}
 
 	return sourceNameText.mid(prefix.length(), suffixIndex - prefix.length()).trimmed();
-}
-
-const char *TaggedTextSourceManager::sourceIdForCurrentPlatform()
-{
-#if defined(_WIN32)
-	return "text_gdiplus";
-#else
-	return "text_ft2_source";
-#endif
-}
-
-bool TaggedTextSourceManager::isTaggedTextSourceName(const char *sourceName)
-{
-	if (!sourceName) {
-		return false;
-	}
-
-	return QString::fromUtf8(sourceName).startsWith(QString::fromUtf8(kTagPrefix));
 }
 
 QString TaggedTextSourceManager::sourceTag(obs_source_t *source)
@@ -236,57 +211,8 @@ TaggedTextSourceManager::TextState TaggedTextSourceManager::stateFromSettingValu
 	return TextState::Reserve;
 }
 
-bool TaggedTextSourceManager::createTaggedTextSource(const QString &sourceName, const QString &tag,
-						     const QString &text) const
-{
-	const QString trimmedName = sourceName.trimmed();
-	const QString trimmedTag = tag.trimmed();
-	if (trimmedName.isEmpty() || trimmedTag.isEmpty()) {
-		return false;
-	}
-
-	const QString taggedSourceName = buildTaggedSourceName(trimmedName, trimmedTag);
-	obs_data_t *settings = obs_data_create();
-	obs_data_set_string(settings, kTextSettingKey, text.toUtf8().constData());
-	obs_data_set_string(settings, kTagSettingKey, trimmedTag.toUtf8().constData());
-	obs_data_set_string(settings, kStateSettingKey, stateToSettingValue(TextState::Reserve));
-
-	obs_source_t *source = obs_source_create(sourceIdForCurrentPlatform(), taggedSourceName.toUtf8().constData(),
-						 settings, nullptr);
-	obs_data_release(settings);
-	if (!source) {
-		blog(LOG_ERROR, "TaggedTextSourceManager: Failed to create text source: %s",
-		     taggedSourceName.toUtf8().constData());
-		return false;
-	}
-
-	obs_source_t *currentSceneSource = obs_frontend_get_current_scene();
-	if (!currentSceneSource) {
-		obs_source_release(source);
-		return false;
-	}
-
-	obs_scene_t *scene = obs_scene_from_source(currentSceneSource);
-	if (!scene) {
-		obs_source_release(currentSceneSource);
-		obs_source_release(source);
-		return false;
-	}
-
-	obs_scene_add(scene, source);
-	obs_source_release(currentSceneSource);
-	obs_source_release(source);
-	return true;
-}
-
-void TaggedTextSourceManager::syncTextToTaggedSources(TextState state, const QString &tag, const QString &text) const
-{
-	SyncContext context{state, tag.trimmed(), text};
-	obs_enum_sources(syncTaggedSourceCallback, &context);
-}
-
 void TaggedTextSourceManager::syncAllTaggedSources(TextState state, const QString &text) const
 {
-	SyncContext context{state, {}, text};
+	SyncContext context{state, text};
 	obs_enum_sources(syncTaggedSourceCallback, &context);
 }

@@ -57,6 +57,10 @@ target_sources(
     src/source/http_sync_server.cpp
     src/source/http_sync_server.hpp
     src/source/ws_frame.hpp
+    src/source/timestamp.cpp
+    src/source/timestamp.hpp
+    src/source/next_request_policy.cpp
+    src/source/next_request_policy.hpp
     src/config/config_manager.cpp
     src/config/config_manager.hpp
 )

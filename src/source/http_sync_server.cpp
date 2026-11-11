@@ -1,4 +1,5 @@
 #include "http_sync_server.hpp"
+#include "next_request_policy.hpp"
 #include "template_paths.hpp"
 #include "ws_frame.hpp"
 
@@ -58,7 +59,7 @@ std::unique_ptr<httplib::Server> HTTPSyncServer::createBoundServer(int port)
 		return new httplib::ThreadPool(kThreadPoolSize);
 	};
 	server->set_socket_options(configureListenSocket);
-	setupRoutes(*server);
+	setupRoutes(*server, port);
 
 	// Bind synchronously so a port conflict is reported to the caller right away.
 	if (!server->bind_to_port(kBindAddress, port)) {
@@ -164,6 +165,12 @@ std::string HTTPSyncServer::getCachedData() const
 	return cachedData;
 }
 
+bool HTTPSyncServer::markOriginLogged(const std::string &origin)
+{
+	std::lock_guard<std::mutex> lock(loggedOrigins_mutex);
+	return loggedOrigins.insert(origin).second;
+}
+
 void HTTPSyncServer::notifyNextSongRequested()
 {
 	if (onNextSongRequested) {
@@ -223,7 +230,7 @@ bool HTTPSyncServer::streamUpdates(httplib::DataSink &sink,
 	return false;
 }
 
-void HTTPSyncServer::setupRoutes(httplib::Server &server)
+void HTTPSyncServer::setupRoutes(httplib::Server &server, int port)
 {
 
 	// GET /templates/* - Serve template files so browser sources load them over http://127.0.0.1
@@ -298,10 +305,30 @@ void HTTPSyncServer::setupRoutes(httplib::Server &server)
 	});
 
 	// POST /next - External command to trigger nextSong
-	server.Post("/next", [this](const httplib::Request &req, httplib::Response &res) {
-		res.set_header("Access-Control-Allow-Origin", "*");
+	server.Post("/next", [this, port](const httplib::Request &req, httplib::Response &res) {
+		const bool restrict = restrictNextOrigin.load();
+		const std::string origin = req.get_header_value("Origin");
+		const bool allowed = setolia::isNextRequestAllowed(origin, port, restrict);
 
-		// Security: Validate request origin if needed
+		// Log each Origin once per session (whether or not the restriction is on), so users can find out
+		// whether their Stream Deck plugin sends one before enabling the restriction.
+		if (!origin.empty() && markOriginLogged((allowed ? "accepted " : "rejected ") + origin)) {
+			blog(allowed ? LOG_INFO : LOG_WARNING,
+			     "HTTPSyncServer: POST /next with Origin '%s' %s (restriction %s; further such requests from "
+			     "this origin are not logged)",
+			     origin.c_str(), allowed ? "accepted" : "rejected with 403", restrict ? "on" : "off");
+		}
+
+		if (!restrict) {
+			// Unrestricted (default): unchanged from earlier versions.
+			res.set_header("Access-Control-Allow-Origin", "*");
+		}
+		if (!allowed) {
+			res.status = 403;
+			res.set_content("Forbidden", "text/plain");
+			return;
+		}
+
 		std::string body = req.body;
 		if (body.length() > 1024) {
 			res.status = 413; // Payload Too Large

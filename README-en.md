@@ -55,6 +55,15 @@ OBS 33 blocks requests to `127.0.0.1` from browser sources loaded as local files
 
 Template browser sources added with earlier versions are converted to the URL form automatically when OBS starts and when the scene collection changes, so you don't need to re-add your templates. Sources that still point at an old install location (`C:\Program Files\obs-studio\data\obs-plugins\setolia\templates\...`, or `<OBS>\data\obs-plugins\setolia\templates\...` of a portable OBS 32) are converted too, as long as a template with the same name exists.
 
+### Rejecting next-song requests from web pages (optional)
+
+`POST /next` (next song) has no authentication, so web pages opened in a browser can call it too. When "Reject next-song requests from browsers (web pages)" is enabled in the dock, `/next` is accepted only in the following cases and answered with `403` otherwise. It is disabled by default, which keeps the previous behavior.
+
+- No `Origin` header (curl, most Stream Deck plugins)
+- `Origin` is `http://127.0.0.1:<port>` or `http://localhost:<port>`
+
+Some Stream Deck plugins send requests from an embedded browser with an `Origin` header; with the option enabled they can no longer switch songs. Whenever `/next` receives an `Origin` header, the OBS log shows `POST /next with Origin '...'` regardless of the setting (once per origin and session). Trigger a song change from your plugin and check the log before enabling the option.
+
 ### Changing the server port
 
 The HTTP server uses port `8080` by default. If another application already uses 8080, the dock shows "Port 8080 is not available" in red. Enter another number (1024–65535) under "Server Port" at the bottom of the dock and press "Apply": the server restarts on that port and existing template browser sources are rewritten to the new port. The setting is saved and used on the next start.

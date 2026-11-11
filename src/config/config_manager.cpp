@@ -7,6 +7,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSaveFile>
 
 ConfigManager::ConfigManager() = default;
 
@@ -87,6 +88,7 @@ bool ConfigManager::loadConfig(Config &config) const
 	config.nextToggled = jsonObj.value("nextToggled").toBool(true);
 	config.selectedTemplate = jsonObj.value("template").toString("");
 	config.port = jsonObj.value("port").toInt(setolia::kDefaultHttpServerPort);
+	config.restrictNextOrigin = jsonObj.value("restrictNextOrigin").toBool(false);
 	if (!setolia::isValidHttpServerPort(config.port)) {
 		blog(LOG_WARNING, "ConfigManager: Invalid port %d in config, using %d", config.port,
 		     setolia::kDefaultHttpServerPort);
@@ -123,10 +125,13 @@ bool ConfigManager::saveConfig(const Config &config) const
 	jsonObj["nextToggled"] = config.nextToggled;
 	jsonObj["template"] = config.selectedTemplate;
 	jsonObj["port"] = config.port;
+	jsonObj["restrictNextOrigin"] = config.restrictNextOrigin;
 
 	const QJsonDocument jsonDoc(jsonObj);
 
-	QFile file(filePath);
+	// QSaveFile writes to a temporary file and renames it over the config on commit(), so a crash or power
+	// loss while saving leaves the previous config intact instead of a truncated file.
+	QSaveFile file(filePath);
 	if (!file.open(QIODevice::WriteOnly)) {
 		blog(LOG_ERROR, "ConfigManager: Failed to open config file for writing: %s",
 		     filePath.toUtf8().constData());
@@ -135,10 +140,14 @@ bool ConfigManager::saveConfig(const Config &config) const
 
 	if (file.write(jsonDoc.toJson()) < 0) {
 		blog(LOG_ERROR, "ConfigManager: Failed to write config file: %s", filePath.toUtf8().constData());
-		file.close();
+		file.cancelWriting();
 		return false;
 	}
 
-	file.close();
+	if (!file.commit()) {
+		blog(LOG_ERROR, "ConfigManager: Failed to commit config file: %s (%s)", filePath.toUtf8().constData(),
+		     file.errorString().toUtf8().constData());
+		return false;
+	}
 	return true;
 }

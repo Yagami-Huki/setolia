@@ -41,6 +41,24 @@ void SetoliaDockWidget::onStreamingStopped()
 	actions->stopStreamingTimer();
 }
 
+void SetoliaDockWidget::onFinishedLoading()
+{
+	actions->resumeStreamingTimerIfActive();
+}
+
+void SetoliaDockWidget::finalize()
+{
+	if (finalized) {
+		return;
+	}
+	finalized = true;
+	actions->flushPendingSave();
+	actions->stopStreaming();
+	actions->stopClock();
+	actions->stopStreamingTimer();
+	actions->deactivate();
+}
+
 void SetoliaDockWidget::buildUI()
 {
 	auto *rootLayout = new QVBoxLayout(this);
@@ -134,6 +152,12 @@ void SetoliaDockWidget::buildUI()
 	serverPortLayout->addWidget(viewParts.applyServerPortButton);
 	viewParts.serverStatusLabel = new QLabel(content);
 	viewParts.serverStatusLabel->setWordWrap(true);
+	viewParts.restrictNextOriginToggle = new QCheckBox(obs_module_text("RESTRICT_NEXT_ORIGIN"), content);
+	viewParts.restrictNextOriginToggle->setChecked(false);
+	viewParts.restrictNextOriginToggle->setToolTip(obs_module_text("RESTRICT_NEXT_ORIGIN_TOOLTIP"));
+
+	viewParts.saveTimer = new QTimer(this);
+	viewParts.saveTimer->setSingleShot(true);
 
 	contentLayout->addWidget(viewParts.clockLabel);
 	contentLayout->addWidget(viewParts.clockDisplay);
@@ -166,6 +190,7 @@ void SetoliaDockWidget::buildUI()
 	contentLayout->addWidget(serverPortLabel);
 	contentLayout->addLayout(serverPortLayout);
 	contentLayout->addWidget(viewParts.serverStatusLabel);
+	contentLayout->addWidget(viewParts.restrictNextOriginToggle);
 	contentLayout->addStretch();
 
 	scrollArea->setWidget(content);
@@ -174,10 +199,9 @@ void SetoliaDockWidget::buildUI()
 
 	setObjectName("SETOLIA_Dock");
 	setWindowTitle("SETOLIA");
-	setWindowFlags(Qt::Widget | Qt::WindowStaysOnTopHint);
+	// No window flags / WA_DeleteOnClose: this widget lives inside an OBS dock, whose lifetime OBS manages.
 	setMinimumSize(250, 400);
 	setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-	setAttribute(Qt::WA_DeleteOnClose);
 }
 
 void SetoliaDockWidget::wireSignals()
@@ -197,6 +221,13 @@ void SetoliaDockWidget::wireSignals()
 
 	connect(viewParts.clockToggle, &QCheckBox::toggled, this,
 		[this](bool checked) { actions->onClockTogglechanged(checked); });
+	connect(viewParts.timestampToggle, &QCheckBox::toggled, this, [this]() { actions->scheduleSave(); });
+	connect(viewParts.nextToggle, &QCheckBox::toggled, this, [this]() { actions->scheduleSave(); });
+	connect(viewParts.templateComboBox, &QComboBox::currentIndexChanged, this,
+		[this]() { actions->scheduleSave(); });
+	connect(viewParts.restrictNextOriginToggle, &QCheckBox::toggled, this,
+		[this](bool checked) { actions->onRestrictNextOriginChanged(checked); });
+	connect(viewParts.saveTimer, &QTimer::timeout, this, [this]() { actions->saveConfig(); });
 }
 
 void SetoliaDockWidget::bootstrap()
@@ -210,14 +241,19 @@ void SetoliaDockWidget::bootstrap()
 	if (configManager->loadConfig(config)) {
 		actions->applyConfig(config);
 	}
-	actions->onTextStateChanged();
+	actions->refreshState();
 	actions->startStreaming();
+	// OBS may already be streaming when the dock is created (e.g. streaming started before the plugin
+	// finished loading); OBS_FRONTEND_EVENT_STREAMING_STARTED is not sent again in that case.
+	actions->resumeStreamingTimerIfActive();
+	// Save edits from now on (not while restoring, so a config that failed to load is not overwritten
+	// without a user action).
+	actions->setAutosaveEnabled(true);
 }
 
 void SetoliaDockWidget::shutdown()
 {
-	actions->saveConfig();
-	actions->stopStreaming();
-	actions->stopClock();
-	actions->stopStreamingTimer();
+	// Normally finalize() already ran on OBS_FRONTEND_EVENT_EXIT. After that libobs may be shut down, so the
+	// destructor must not save or touch OBS again.
+	finalize();
 }
