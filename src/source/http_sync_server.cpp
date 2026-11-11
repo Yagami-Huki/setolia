@@ -1,5 +1,6 @@
 #include "http_sync_server.hpp"
 #include "template_paths.hpp"
+#include "ws_frame.hpp"
 
 #include "../../deps/httplib.h"
 
@@ -7,65 +8,108 @@
 #include <QCryptographicHash>
 #include <QByteArray>
 
-#include <iostream>
+#include <chrono>
 
-HTTPSyncServer::HTTPSyncServer() : srv(std::make_unique<httplib::Server>()) {}
+namespace {
+
+// Each /ws and /events client occupies one worker thread for as long as it is connected, and every template
+// browser source keeps such a connection open even while its scene is not shown. httplib's default pool is
+// max(8, cores - 1) threads, so a dozen template sources could exhaust it and leave template files, /data and
+// /next queued forever. 64 threads leaves plenty of headroom for many sources plus regular requests; idle
+// workers just sleep on the task queue.
+constexpr size_t kThreadPoolSize = 64;
+
+// /ws and /events send a keep-alive after this much silence. A failed write ends the stream and frees the
+// worker thread, so clients that disappeared are detected within one or two intervals.
+constexpr auto kKeepAliveInterval = std::chrono::seconds(15);
+
+const char *const kBindAddress = "127.0.0.1";
+
+void configureListenSocket([[maybe_unused]] socket_t sock)
+{
+#ifdef _WIN32
+	// httplib's default sets SO_REUSEADDR, which on Windows lets bind() succeed on a port another
+	// application is already listening on. Use exclusive binding so a port conflict fails bind_to_port.
+	BOOL exclusive = TRUE;
+	setsockopt(sock, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char *>(&exclusive),
+		   sizeof(exclusive));
+#else
+	// SO_REUSEADDR only (no SO_REUSEPORT): allows rebinding while old connections are in TIME_WAIT after a
+	// restart, but still fails when another socket is listening on the port.
+	int yes = 1;
+	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+#endif
+}
+
+} // namespace
+
+HTTPSyncServer::HTTPSyncServer() = default;
 
 HTTPSyncServer::~HTTPSyncServer()
 {
-	if (srv_running || isRunning()) {
-		stopServer();
-	}
+	stopServer();
 }
 
-void HTTPSyncServer::startServer()
+bool HTTPSyncServer::startServer(int port)
 {
-	if (srv_running || !srv_stopped) {
-		blog(LOG_WARNING, "HTTPSyncServer: Server already running or starting");
-		return;
-	}
+	// A stopped httplib::Server cannot be reused, so every start builds a fresh instance.
+	stopServer();
 
+	srv = std::make_unique<httplib::Server>();
+	srv->new_task_queue = [] {
+		return new httplib::ThreadPool(kThreadPoolSize);
+	};
+	srv->set_socket_options(configureListenSocket);
 	setupRoutes();
 
-	srv_stopped.store(false);
-	srv_running.store(true);
+	// Bind synchronously so a port conflict is reported to the caller right away.
+	if (!srv->bind_to_port(kBindAddress, port)) {
+		blog(LOG_ERROR, "HTTPSyncServer: Failed to bind %s:%d (port in use?)", kBindAddress, port);
+		srv.reset();
+		return false;
+	}
 
-	// Start server in background thread
+	{
+		std::lock_guard<std::mutex> lock(srv_mutex);
+		srv_stopped.store(false);
+	}
+
 	srv_thread = std::thread([this]() {
-		if (!srv->listen("127.0.0.1", setolia::kHttpServerPort)) {
-			blog(LOG_ERROR, "HTTPSyncServer: Failed to start server");
-			srv_running.store(false);
+		if (!srv->listen_after_bind()) {
+			blog(LOG_ERROR, "HTTPSyncServer: Server stopped with an error");
 		}
-		waitForShutdown();
 	});
+
+	blog(LOG_INFO, "HTTPSyncServer: Listening on %s:%d", kBindAddress, port);
+	return true;
 }
 
 void HTTPSyncServer::stopServer()
 {
-	if (!srv_running && srv_stopped) {
-		return;
-	}
-
+	// Wake every /ws and /events stream so it returns and releases its worker thread.
 	{
 		std::lock_guard<std::mutex> lock(srv_mutex);
 		srv_stopped.store(true);
 	}
 	srv_cond.notify_all();
 
-	if (srv && srv->is_running()) {
+	if (srv) {
 		srv->stop();
 	}
 
+	// listen_after_bind() returns after the thread pool has joined all worker threads.
 	if (srv_thread.joinable()) {
 		srv_thread.join();
 	}
 
-	srv_running.store(false);
+	srv.reset();
 }
 
 bool HTTPSyncServer::isRunning() const
 {
-	return srv && srv->is_running();
+	// srv exists only between a successful bind and stopServer(). (srv->is_running() turns true a moment
+	// later, once the listen thread has started, so it is not used here.)
+	return srv != nullptr && !srv_stopped.load();
 }
 
 void HTTPSyncServer::updateCachedData(const std::string &newData)
@@ -82,6 +126,7 @@ void HTTPSyncServer::updateCachedData(const std::string &newData)
 		{
 			std::lock_guard<std::mutex> lock(srv_mutex);
 			latestData = newData;
+			dataVersion++;
 		}
 		srv_cond.notify_all();
 	}
@@ -100,6 +145,58 @@ void HTTPSyncServer::notifyNextSongRequested()
 	}
 }
 
+bool HTTPSyncServer::streamUpdates(httplib::DataSink &sink,
+				   const std::function<std::string(const std::string &)> &encode,
+				   const std::string &keepAlive)
+{
+	// srv_mutex is only held to copy the shared state; socket writes happen without it so a slow
+	// client can never block updateCachedData() (called from the OBS UI thread).
+	std::string payload;
+	std::uint64_t sentVersion = 0;
+	{
+		std::lock_guard<std::mutex> lock(srv_mutex);
+		if (srv_stopped.load()) {
+			return false;
+		}
+		payload = latestData;
+		sentVersion = dataVersion;
+	}
+
+	// Send the current state right away so a newly connected client does not wait for the next change.
+	if (!payload.empty()) {
+		const std::string bytes = encode(payload);
+		if (!sink.write(bytes.data(), bytes.size())) {
+			return false;
+		}
+	}
+
+	while (true) {
+		bool changed = false;
+		{
+			std::unique_lock<std::mutex> lock(srv_mutex);
+			changed = srv_cond.wait_for(lock, kKeepAliveInterval, [this, sentVersion] {
+				return srv_stopped.load() || dataVersion != sentVersion;
+			});
+			if (srv_stopped.load()) {
+				break;
+			}
+			if (changed) {
+				payload = latestData;
+				sentVersion = dataVersion;
+			}
+		}
+
+		const std::string bytes = changed ? encode(payload) : keepAlive;
+		if (!sink.write(bytes.data(), bytes.size())) {
+			break; // client went away
+		}
+	}
+
+	// Returning false ends the response and closes the connection. Returning true would make httplib
+	// call the provider again for as long as the server is not yet shutting down.
+	return false;
+}
+
 void HTTPSyncServer::setupRoutes()
 {
 	if (!srv) {
@@ -110,7 +207,6 @@ void HTTPSyncServer::setupRoutes()
 	// GET /templates/* - Serve template files so browser sources load them over http://127.0.0.1
 	// instead of as local files (OBS 33 / CEF blocks fetch from file:// pages to 127.0.0.1).
 	// no-cache: edits to templates are picked up on the next reload.
-	srv->remove_mount_point(setolia::kTemplatesMountPoint); // avoid duplicates when restarted
 	const QString templatesDir = setolia::templatesDirectoryPath();
 	if (templatesDir.isEmpty() ||
 	    !srv->set_mount_point(setolia::kTemplatesMountPoint, templatesDir.toUtf8().toStdString(),
@@ -138,32 +234,8 @@ void HTTPSyncServer::setupRoutes()
 		res.set_header("Connection", "keep-alive");
 
 		res.set_content_provider("text/event-stream", [this](size_t, httplib::DataSink &sink) -> bool {
-			std::string lastSentData = "";
-			std::unique_lock<std::mutex> lock(srv_mutex);
-
-			while (true) {
-				// Wait for data update or server stop
-				srv_cond.wait(lock, [this, &lastSentData] {
-					return srv_stopped.load() || (latestData != lastSentData);
-				});
-
-				// Check if server is shutting down
-				if (srv_stopped.load()) {
-					break;
-				}
-
-				// Send data if changed
-				if (latestData != lastSentData) {
-					std::string payload = "data: " + latestData + "\n\n";
-
-					if (!sink.write(payload.data(), payload.size())) {
-						break;
-					}
-
-					lastSentData = latestData;
-				}
-			}
-			return true;
+			return streamUpdates(
+				sink, [](const std::string &data) { return "data: " + data + "\n\n"; }, ": ping\n\n");
 		});
 	});
 
@@ -196,69 +268,7 @@ void HTTPSyncServer::setupRoutes()
 		res.set_header("Sec-WebSocket-Accept", accept_key);
 
 		res.set_content_provider("text/plain", [this](size_t, httplib::DataSink &sink) -> bool {
-			std::string lastSentData = "";
-			std::unique_lock<std::mutex> lock(srv_mutex);
-
-			// Send initial payload if available
-			if (!latestData.empty()) {
-				std::string text = latestData;
-				size_t len = text.size();
-				std::string frame;
-				frame.push_back((char)0x81); // FIN + Text Opcode
-				if (len <= 125) {
-					frame.push_back((char)len);
-				} else if (len <= 65535) {
-					frame.push_back((char)126);
-					frame.push_back((char)((len >> 8) & 0xFF));
-					frame.push_back((char)(len & 0xFF));
-				} else {
-					frame.push_back((char)127);
-					for (int i = 7; i >= 0; i--) {
-						frame.push_back((char)((len >> (i * 8)) & 0xFF));
-					}
-				}
-				frame += text;
-				if (!sink.write(frame.data(), frame.size()))
-					return false;
-				lastSentData = latestData;
-			}
-
-			while (true) {
-				srv_cond.wait(lock, [this, &lastSentData] {
-					return srv_stopped.load() || (latestData != lastSentData);
-				});
-
-				if (srv_stopped.load()) {
-					break;
-				}
-
-				if (latestData != lastSentData) {
-					std::string text = latestData;
-					size_t len = text.size();
-					std::string frame;
-					frame.push_back((char)0x81);
-					if (len <= 125) {
-						frame.push_back((char)len);
-					} else if (len <= 65535) {
-						frame.push_back((char)126);
-						frame.push_back((char)((len >> 8) & 0xFF));
-						frame.push_back((char)(len & 0xFF));
-					} else {
-						frame.push_back((char)127);
-						for (int i = 7; i >= 0; i--) {
-							frame.push_back((char)((len >> (i * 8)) & 0xFF));
-						}
-					}
-					frame += text;
-
-					if (!sink.write(frame.data(), frame.size())) {
-						break;
-					}
-
-					lastSentData = latestData;
-				}
-			}
-			return true;
+			return streamUpdates(sink, setolia::buildWsTextFrame, setolia::buildWsPingFrame());
 		});
 	});
 
@@ -285,10 +295,4 @@ void HTTPSyncServer::setupRoutes()
 			res.set_content("Internal server error", "text/plain");
 		}
 	});
-}
-
-void HTTPSyncServer::waitForShutdown()
-{
-	std::unique_lock<std::mutex> lock(srv_mutex);
-	srv_cond.wait(lock, [this] { return srv_stopped.load(); });
 }

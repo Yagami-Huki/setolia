@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../source/template_paths.hpp"
+
 #include <QString>
 #include <memory>
 
@@ -17,6 +19,9 @@ public:
 
 	// Template
 	QString selectedTemplate;
+
+	// HTTP server port (setolia::kMinHttpServerPort..kMaxHttpServerPort)
+	int port = setolia::kDefaultHttpServerPort;
 };
 
 class ConfigManager {

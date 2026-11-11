@@ -41,6 +41,11 @@ bool ConfigManager::validateConfig(const Config &config) const
 		return false;
 	}
 
+	if (!setolia::isValidHttpServerPort(config.port)) {
+		blog(LOG_WARNING, "ConfigManager: Port %d is out of range", config.port);
+		return false;
+	}
+
 	return true;
 }
 
@@ -81,6 +86,12 @@ bool ConfigManager::loadConfig(Config &config) const
 	config.timestampToggled = jsonObj.value("timestampToggled").toBool(false);
 	config.nextToggled = jsonObj.value("nextToggled").toBool(true);
 	config.selectedTemplate = jsonObj.value("template").toString("");
+	config.port = jsonObj.value("port").toInt(setolia::kDefaultHttpServerPort);
+	if (!setolia::isValidHttpServerPort(config.port)) {
+		blog(LOG_WARNING, "ConfigManager: Invalid port %d in config, using %d", config.port,
+		     setolia::kDefaultHttpServerPort);
+		config.port = setolia::kDefaultHttpServerPort;
+	}
 
 	if (!validateConfig(config)) {
 		blog(LOG_WARNING, "ConfigManager: Loaded config failed validation");
@@ -111,6 +122,7 @@ bool ConfigManager::saveConfig(const Config &config) const
 	jsonObj["timestampToggled"] = config.timestampToggled;
 	jsonObj["nextToggled"] = config.nextToggled;
 	jsonObj["template"] = config.selectedTemplate;
+	jsonObj["port"] = config.port;
 
 	const QJsonDocument jsonDoc(jsonObj);
 

@@ -1,36 +1,149 @@
 #include "template_paths.hpp"
 
-#include <obs-module.h>
-
 #include <QDir>
-#include <QFileInfo>
-#include <QStringList>
+#include <QRegularExpression>
 #include <QUrl>
+
+#include <atomic>
 
 namespace setolia {
 
-QString templatesDirectoryPath()
+namespace {
+
+std::atomic<int> g_httpServerPort{kDefaultHttpServerPort};
+
+// Accepts both separators regardless of the platform (scene collections may come from Windows).
+QString normalizeSeparators(const QString &path)
 {
-	char *templatesDir = obs_module_file("templates");
-	if (!templatesDir) {
-		return QString();
-	}
-	const QString path = QString::fromUtf8(templatesDir);
-	bfree(templatesDir);
-	// obs_module_file may return a path containing "../" (e.g. on Windows); normalize it.
-	return QDir::cleanPath(QFileInfo(path).absoluteFilePath());
+	QString normalized = path;
+	normalized.replace(QLatin1Char('\\'), QLatin1Char('/'));
+	return QDir::cleanPath(normalized);
 }
 
-QString templateUrl(const QString &relativePath)
+} // namespace
+
+bool isValidHttpServerPort(int port)
+{
+	return port >= kMinHttpServerPort && port <= kMaxHttpServerPort;
+}
+
+int httpServerPort()
+{
+	return g_httpServerPort.load();
+}
+
+void setHttpServerPort(int port)
+{
+	if (isValidHttpServerPort(port)) {
+		g_httpServerPort.store(port);
+	}
+}
+
+QString templateUrl(const QString &relativePath, int port)
 {
 	QStringList encoded;
 	for (const QString &segment : relativePath.split('/', Qt::SkipEmptyParts)) {
 		encoded.append(QString::fromUtf8(QUrl::toPercentEncoding(segment)));
 	}
 	return QStringLiteral("http://127.0.0.1:%1%2/%3")
-		.arg(kHttpServerPort)
+		.arg(port)
 		.arg(QString::fromLatin1(kTemplatesMountPoint))
 		.arg(encoded.join('/'));
+}
+
+QString templateUrl(const QString &relativePath)
+{
+	return templateUrl(relativePath, httpServerPort());
+}
+
+Qt::CaseSensitivity platformPathCaseSensitivity()
+{
+#if defined(_WIN32)
+	return Qt::CaseInsensitive;
+#else
+	return Qt::CaseSensitive;
+#endif
+}
+
+const char *templateMigrationRuleName(TemplateMigrationRule rule)
+{
+	switch (rule) {
+	case TemplateMigrationRule::CurrentTemplatesDir:
+		return "current template folder";
+	case TemplateMigrationRule::LegacyTemplatesPath:
+		return "legacy template path";
+	case TemplateMigrationRule::PortChange:
+		return "port change";
+	}
+	return "unknown";
+}
+
+std::optional<TemplateLocalFileMatch> templateRelativePathFromLocalFile(const QString &localFile,
+									const QString &templatesDir,
+									const QStringList &templateNames,
+									Qt::CaseSensitivity caseSensitivity)
+{
+	if (localFile.trimmed().isEmpty()) {
+		return std::nullopt;
+	}
+	const QString file = normalizeSeparators(localFile);
+
+	// (a) Under the current template folder.
+	if (!templatesDir.isEmpty()) {
+		const QString prefix = normalizeSeparators(templatesDir) + QLatin1Char('/');
+		if (file.startsWith(prefix, caseSensitivity)) {
+			const QString relativePath = file.mid(prefix.size());
+			if (!relativePath.isEmpty()) {
+				return TemplateLocalFileMatch{relativePath, TemplateMigrationRule::CurrentTemplatesDir};
+			}
+		}
+	}
+
+	// (b) .../setolia/templates/<name>/<file> of a template that exists now. Covers the OBS 32 data layout
+	// (<OBS>/data/obs-plugins/setolia/templates, incl. old Program Files installs) and, for good measure,
+	// the OBS 33 plugin layout (.../plugins/setolia/data/templates) of another install location.
+	static const QString markers[] = {QStringLiteral("/setolia/templates/"),
+					  QStringLiteral("/setolia/data/templates/")};
+	qsizetype restPos = -1;
+	for (const QString &marker : markers) {
+		const qsizetype pos = file.lastIndexOf(marker, -1, caseSensitivity);
+		if (pos >= 0 && pos + marker.size() > restPos) {
+			restPos = pos + marker.size();
+		}
+	}
+	if (restPos < 0) {
+		return std::nullopt;
+	}
+	const QString rest = file.mid(restPos);
+	const qsizetype slash = rest.indexOf(QLatin1Char('/'));
+	if (slash <= 0 || slash == rest.size() - 1) {
+		return std::nullopt; // no "<name>/<file>"
+	}
+	const QString name = rest.left(slash);
+	const QString remainder = rest.mid(slash + 1);
+	for (const QString &templateName : templateNames) {
+		if (QString::compare(templateName, name, caseSensitivity) == 0) {
+			return TemplateLocalFileMatch{templateName + QLatin1Char('/') + remainder,
+						      TemplateMigrationRule::LegacyTemplatesPath};
+		}
+	}
+	return std::nullopt;
+}
+
+std::optional<QString> rewriteTemplateUrlPort(const QString &url, int port)
+{
+	static const QRegularExpression pattern(
+		QStringLiteral("^(http://(?:127\\.0\\.0\\.1|localhost)):(\\d{1,5})(/templates/.*)$"),
+		QRegularExpression::CaseInsensitiveOption);
+
+	const QRegularExpressionMatch match = pattern.match(url.trimmed());
+	if (!match.hasMatch()) {
+		return std::nullopt;
+	}
+	if (match.captured(2).toInt() == port) {
+		return std::nullopt;
+	}
+	return match.captured(1) + QLatin1Char(':') + QString::number(port) + match.captured(3);
 }
 
 } // namespace setolia

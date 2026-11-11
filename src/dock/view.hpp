@@ -7,6 +7,7 @@ class QTimer;
 class QTextEdit;
 class QPushButton;
 class QComboBox;
+class QSpinBox;
 
 struct DockViewParts {
 	// Realtime Clock
@@ -37,6 +38,11 @@ struct DockViewParts {
 	QPushButton *openTemplateButton = nullptr;
 	QPushButton *reloadTemplateButton = nullptr;
 	QPushButton *addButton = nullptr;
+
+	// HTTP server
+	QLabel *serverStatusLabel = nullptr;
+	QSpinBox *serverPortSpinBox = nullptr;
+	QPushButton *applyServerPortButton = nullptr;
 
 	// Lyric Search
 	QLineEdit *lyricSearchText = nullptr;

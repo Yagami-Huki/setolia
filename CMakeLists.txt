@@ -6,6 +6,7 @@ project(${_name} VERSION ${_version})
 
 option(ENABLE_FRONTEND_API "Use obs-frontend-api for UI functionality" OFF)
 option(ENABLE_QT "Use Qt functionality" OFF)
+option(ENABLE_TESTS "Build OBS-independent unit tests (run with ctest)" OFF)
 
 include(compilerconfig)
 include(defaults)
@@ -34,31 +35,37 @@ if(ENABLE_QT)
   )
 endif()
 
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-  src/setolia.cpp
-  src/setolia.hpp
-  src/dock/widget.cpp
-  src/dock/widget.hpp
-  src/dock/view.hpp
-  src/dock/action.cpp
-  src/dock/action.hpp
-  src/source/template_manager.cpp
-  src/source/template_manager.hpp
-  src/source/template_paths.cpp
-  src/source/template_paths.hpp
-  src/source/tagged_text_source_manager.cpp
-  src/source/tagged_text_source_manager.hpp
-  src/source/setolia_text_sources.cpp
-  src/source/setolia_text_sources.hpp
-  src/source/http_sync_server.cpp
-  src/source/http_sync_server.hpp
-  src/config/config_manager.cpp
-  src/config/config_manager.hpp
-  )
-
-target_compile_definitions(
+target_sources(
   ${CMAKE_PROJECT_NAME}
-  PRIVATE PLUGIN_VERSION="${CMAKE_PROJECT_VERSION}"
+  PRIVATE
+    src/setolia.cpp
+    src/setolia.hpp
+    src/dock/widget.cpp
+    src/dock/widget.hpp
+    src/dock/view.hpp
+    src/dock/action.cpp
+    src/dock/action.hpp
+    src/source/template_manager.cpp
+    src/source/template_manager.hpp
+    src/source/template_paths.cpp
+    src/source/template_paths.hpp
+    src/source/template_paths_obs.cpp
+    src/source/tagged_text_source_manager.cpp
+    src/source/tagged_text_source_manager.hpp
+    src/source/setolia_text_sources.cpp
+    src/source/setolia_text_sources.hpp
+    src/source/http_sync_server.cpp
+    src/source/http_sync_server.hpp
+    src/source/ws_frame.hpp
+    src/config/config_manager.cpp
+    src/config/config_manager.hpp
 )
 
+target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE PLUGIN_VERSION="${CMAKE_PROJECT_VERSION}")
+
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})
+
+if(ENABLE_TESTS)
+  enable_testing()
+  add_subdirectory(tests)
+endif()
